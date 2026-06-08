@@ -6,6 +6,7 @@ class QueryRequest(BaseModel):
     query: str
     top_k: int = 0
     rerank: bool = True
+    use_mmr: bool = False
 
 
 class Citation(BaseModel):

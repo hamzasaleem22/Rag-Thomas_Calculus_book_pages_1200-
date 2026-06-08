@@ -25,6 +25,24 @@ class BM25SparseEmbeddings(SparseEmbeddings):
         self.doc_count = 0
         self.fitted = False
 
+    @classmethod
+    def from_pickle(cls, path: str = "/tmp/qdrant_calculus_bm25.pkl") -> "BM25SparseEmbeddings":
+        import pickle, os
+        if not os.path.exists(path):
+            print(f"BM25 state not found at {path}, using empty BM25")
+            return cls()
+        with open(path, "rb") as f:
+            state = pickle.load(f)
+        bm25 = cls(k1=state.get("k1", 1.5), b=state.get("b", 0.75))
+        bm25.vocab = state.get("vocab", {})
+        bm25.doc_freqs = {int(k): v for k, v in state.get("doc_freqs", {}).items()}
+        bm25.num_docs = state.get("num_docs", 0)
+        bm25.avg_dl = state.get("avg_dl", 0.0)
+        bm25.doc_lengths = state.get("doc_lengths", [])
+        bm25.fitted = state.get("fitted", False)
+        print(f"Loaded BM25 state: {len(bm25.vocab)} vocab, {bm25.num_docs} docs, fitted={bm25.fitted}")
+        return bm25
+
     def _tokenize(self, text: str) -> list[str]:
         return re.findall(r"\w+", text.lower())
 
@@ -94,11 +112,12 @@ class HybridVectorStore:
         client: Optional[QdrantClient] = None,
         collection: str = "",
         embedding: Optional[HFInferenceAPIEmbeddings] = None,
+        bm25_path: str = "/tmp/qdrant_calculus_bm25.pkl",
     ):
         self.collection = collection or settings.qdrant_collection
         self.client = client or QdrantClient(":memory:")
         self.embedding = embedding or HFInferenceAPIEmbeddings()
-        self.sparse_embedding = BM25SparseEmbeddings()
+        self.sparse_embedding = BM25SparseEmbeddings.from_pickle(bm25_path)
         self._store: Optional[QdrantVectorStore] = None
 
     @property
