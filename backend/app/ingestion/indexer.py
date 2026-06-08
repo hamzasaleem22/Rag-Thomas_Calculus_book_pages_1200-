@@ -15,6 +15,16 @@ def index_documents(
     collection: str = "",
     batch_size: int = 64,
 ) -> int:
+    count, _ = index_documents_and_return_bm25(chunks, client, collection, batch_size)
+    return count
+
+
+def index_documents_and_return_bm25(
+    chunks: list[Document],
+    client: Optional[QdrantClient] = None,
+    collection: str = "",
+    batch_size: int = 64,
+) -> tuple[int, BM25SparseEmbeddings]:
     from qdrant_client import QdrantClient as QC
     from qdrant_client.models import Distance, PointStruct, SparseVectorParams, VectorParams
 
@@ -69,4 +79,4 @@ def index_documents(
         client.upsert(collection_name=collection, points=points)
         indexed += len(points)
 
-    return indexed
+    return indexed, sparse_embedding

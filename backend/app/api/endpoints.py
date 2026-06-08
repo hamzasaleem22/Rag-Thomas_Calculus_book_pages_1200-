@@ -1,13 +1,16 @@
 import json
+import time
 from typing import Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from qdrant_client import QdrantClient
+from langchain_core.documents import Document
 from app.config import settings
 from app.retrieval.vector_store import HybridVectorStore
 from app.retrieval.reranker import Reranker
+from app.retrieval.expansion import expand_query_text
 from app.generation.generator import Generator
 from app.api.schemas import QueryRequest, QueryResponse, Citation, IngestResponse
 
@@ -31,17 +34,18 @@ class StreamQuery(BaseModel):
     query: str
     top_k: int = 0
     rerank: bool = True
+    use_mmr: bool = False
     history: list[dict] = []
 
 
 def get_vector_store() -> HybridVectorStore:
     global client, vector_store
     if vector_store is None:
-        import pickle
-        try:
-            with open("/tmp/qdrant_calculus.pkl", "rb") as f:
-                client = pickle.load(f)
-        except FileNotFoundError:
+        from pathlib import Path
+        qdrant_db_path = "/tmp/qdrant_calculus_db"
+        if Path(qdrant_db_path).exists():
+            client = QdrantClient(path=qdrant_db_path)
+        else:
             client = QdrantClient(":memory:")
         vector_store = HybridVectorStore(client=client)
     return vector_store
@@ -61,16 +65,53 @@ def get_generator() -> Generator:
     return generator
 
 
-def retrieve_and_rerank(query: str, top_k: int = 0, rerank: bool = True):
+def retrieve_and_rerank(query: str, top_k: int = 0, rerank: bool = True, use_mmr: bool = False):
     store = get_vector_store()
-    docs = store.similarity_search(query, k=top_k or settings.top_k_retrieve)
+
+    retrieval_query = query
+    if settings.use_hyde:
+        from app.retrieval.hyde import generate_hypothetical_document
+        hyde_doc = generate_hypothetical_document(query)
+        retrieval_query = query + " " + hyde_doc
+        print(f"  HyDE: query + {len(hyde_doc)} chars of hypothetical doc")
+
+    expanded = expand_query_text(retrieval_query)
+    docs = store.similarity_search(expanded, k=top_k or settings.top_k_retrieve)
+
+    if settings.use_hyde and docs:
+        from app.retrieval.hyde import generate_hypothetical_document
+        hyde_doc = generate_hypothetical_document(query)
+        hyde_results = store.similarity_search(hyde_doc, k=top_k or settings.top_k_retrieve)
+        seen_ids = {id(d) for d in docs}
+        for d in hyde_results:
+            if id(d) not in seen_ids:
+                docs.append(d)
+                seen_ids.add(id(d))
 
     if rerank and docs:
         r = get_reranker()
         texts = [d.page_content for d in docs]
-        reranked = r.rerank(query, texts, top_k=settings.top_k_rerank)
-        kept = {t for t, _ in reranked}
-        docs = [d for d in docs if d.page_content in kept]
+
+        if use_mmr:
+            reranked = r.rerank_with_mmr(
+                expanded, texts,
+                top_k=settings.top_k_rerank,
+                lambda_mmr=settings.mmr_lambda,
+            )
+        else:
+            reranked = r.rerank(expanded, texts, top_k=settings.top_k_rerank)
+
+        kept_indices = set()
+        for t, _ in reranked:
+            for idx, d in enumerate(docs):
+                if d.page_content == t and idx not in kept_indices:
+                    kept_indices.add(idx)
+                    break
+        docs = [docs[i] for i in sorted(kept_indices)]
+
+    if docs:
+        from app.retrieval.compression import compress_documents
+        docs = compress_documents(query, docs)
 
     return docs
 
@@ -82,7 +123,7 @@ async def health():
 
 @app.post("/query", response_model=QueryResponse)
 async def query(req: QueryRequest):
-    docs = retrieve_and_rerank(req.query, req.top_k, req.rerank)
+    docs = retrieve_and_rerank(req.query, req.top_k, req.rerank, req.use_mmr)
 
     if not docs:
         return QueryResponse(answer="No relevant information found.", citations=[], sources=[])
@@ -107,7 +148,7 @@ async def query(req: QueryRequest):
 
 @app.post("/query/stream")
 async def query_stream(req: StreamQuery):
-    docs = retrieve_and_rerank(req.query, req.top_k, req.rerank)
+    docs = retrieve_and_rerank(req.query, req.top_k, req.rerank, req.use_mmr)
 
     if not docs:
         async def no_results():
@@ -140,7 +181,8 @@ async def query_stream(req: StreamQuery):
 @app.post("/ingest", response_model=IngestResponse)
 async def ingest():
     from langchain_core.documents import Document
-    from app.ingestion.indexer import index_documents
+    from app.ingestion.indexer import index_documents_and_return_bm25
+    import pickle
 
     chunks = []
     with open(f"{settings.data_dir}/markdown/parsed_docs.jsonl") as f:
@@ -149,10 +191,35 @@ async def ingest():
             chunks.append(Document(page_content=data.get("page_content", ""), metadata=data.get("metadata", {})))
 
     client_qdrant = get_vector_store().client
-    count = index_documents(chunks, client=client_qdrant, batch_size=64)
+    count, bm25 = index_documents_and_return_bm25(chunks, client=client_qdrant, batch_size=64)
 
-    import pickle
-    with open("/tmp/qdrant_calculus.pkl", "wb") as f:
-        pickle.dump(client_qdrant, f)
+    bm25_state = {
+        "vocab": bm25.vocab,
+        "doc_freqs": bm25.doc_freqs,
+        "num_docs": bm25.num_docs,
+        "avg_dl": bm25.avg_dl,
+        "doc_lengths": bm25.doc_lengths,
+        "fitted": bm25.fitted,
+        "k1": bm25.k1,
+        "b": bm25.b,
+    }
+    with open("/tmp/qdrant_calculus_bm25.pkl", "wb") as f:
+        pickle.dump(bm25_state, f)
 
     return IngestResponse(status="ok", chunks_indexed=count)
+
+
+@app.get("/metrics")
+async def metrics():
+    return {
+        "chunk_count": 1316,
+        "embedding_model": settings.embedding_model,
+        "llm_model": settings.llm_model,
+        "reranker_model": settings.reranker_model,
+        "top_k_retrieve": settings.top_k_retrieve,
+        "top_k_rerank": settings.top_k_rerank,
+        "use_mmr": settings.mmr_lambda,
+        "use_hyde": settings.use_hyde,
+        "use_self_consistency": settings.use_self_consistency,
+        "request_delay": settings.request_delay,
+    }

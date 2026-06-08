@@ -2,13 +2,22 @@ import re
 from typing import Optional
 
 from langchain_core.documents import Document
-from langchain_text_splitters import MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter
-
+from langchain_text_splitters import MarkdownHeaderTextSplitter
 
 SECTION_PATTERN = re.compile(r"^(1[0-6]|\d)\.(\d+)\s+([A-Z][A-Za-z0-9 ,;:\-']+?)\s+(\d+)$")
 CHAPTER_PAGE_PATTERN = re.compile(r"^\d{1,4}\s+Chapter\s+(1[0-6]|\d)\s+(.+)$")
-CHAPTER_STANDALONE = re.compile(r"^Chapter\s+(1[0-6]|\d)\s*(:|\.)?\s+(.+)$")
+CHAPTER_STANDALONE = re.compile(r"^Chapter\s+(1[0-6]|\d)\s*(:|\.)?\s*(.+)$")
 SECTION_APPENDIX = re.compile(r"^Section\s+(1[0-6]|\d)\.(\d+)\s*[,\s]\s*(?:pp\.)?\s*\d+", re.IGNORECASE)
+
+THEOREM_BOUNDARIES = re.compile(
+    r"(^|\n)(?=("
+    r"THEOREM\s+\d+"
+    r"|Definition\s+\d+"
+    r"|EXAMPLE\s+\d+"
+    r"|Rule\s+\d+"
+    r"))",
+    re.MULTILINE | re.IGNORECASE,
+)
 
 
 def _inject_markdown_headers(text: str) -> str:
@@ -89,6 +98,42 @@ def _fix_broken_latex(chunks: list[Document]) -> list[Document]:
     return merged
 
 
+def _enforce_theorem_boundary(chunks: list[Document]) -> list[Document]:
+    result = []
+    for chunk in chunks:
+        splits = THEOREM_BOUNDARIES.split(chunk.page_content)
+        if len(splits) == 1:
+            result.append(chunk)
+        else:
+            head = Document(page_content=splits[0], metadata={**chunk.metadata})
+            result.append(head)
+            for i in range(2, len(splits), 3):
+                prefix = splits[i - 1] if i - 1 < len(splits) else ""
+                content = splits[i] if i < len(splits) else ""
+                if prefix or content:
+                    new_doc = Document(
+                        page_content=(prefix + content).strip(),
+                        metadata={**chunk.metadata},
+                    )
+                    result.append(new_doc)
+    return result
+
+
+def _estimate_tokens(text: str) -> int:
+    return len(text) // 4
+
+
+def _smart_split_at_boundary(text: str, max_chars: int) -> list[str]:
+    if len(text) <= max_chars:
+        return [text]
+    boundary = re.search(r"(?<=\n)(?=THEOREM|Definition|EXAMPLE|Rule|\.\s)", text)
+    if boundary:
+        split_pos = boundary.start()
+        if split_pos > max_chars * 0.3:
+            return [text[:split_pos].strip(), text[split_pos:].strip()]
+    return [text[:max_chars].strip(), text[max_chars:].strip()]
+
+
 def get_header_splitter() -> MarkdownHeaderTextSplitter:
     return MarkdownHeaderTextSplitter(
         headers_to_split_on=[
@@ -99,23 +144,21 @@ def get_header_splitter() -> MarkdownHeaderTextSplitter:
     )
 
 
-def get_content_splitter(chunk_size: int = 512, chunk_overlap: int = 50) -> RecursiveCharacterTextSplitter:
-    return RecursiveCharacterTextSplitter(
-        chunk_size=chunk_size,
-        chunk_overlap=chunk_overlap,
-        separators=["\n\n", "\n", " ", ""],
-        length_function=len,
-    )
-
-
 def chunk_documents(
     docs: list[Document],
-    chunk_size: int = 512,
-    chunk_overlap: int = 50,
+    chunk_size: int = 1024,
+    chunk_overlap: int = 128,
     chapter: Optional[str] = None,
 ) -> list[Document]:
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
+
     header_splitter = get_header_splitter()
-    content_splitter = get_content_splitter(chunk_size, chunk_overlap)
+    content_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        separators=["\n\n", "\n", ". ", " ", ""],
+        length_function=_estimate_tokens,
+    )
     sorted_docs = sorted(docs, key=lambda d: d.metadata.get("page", 0))
     page_chapters = _scan_chapters(sorted_docs)
 
@@ -139,6 +182,7 @@ def chunk_documents(
             for cc in content_chunks:
                 cc.metadata = {**section_meta, **cc.metadata}
 
+            content_chunks = _enforce_theorem_boundary(content_chunks)
             content_chunks = _fix_broken_latex(content_chunks)
 
             for i, cc in enumerate(content_chunks):
@@ -150,6 +194,8 @@ def chunk_documents(
                 )
 
             all_chunks.extend(content_chunks)
+
+    all_chunks = [c for c in all_chunks if len(c.page_content.strip()) >= 50]
 
     for i, chunk in enumerate(all_chunks):
         chunk.metadata["chunk_id"] = i
