@@ -1,0 +1,11 @@
+.venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/**/*.pyc
+backend/.env
+backend/data/markdown/
+backend/data/qdrant/
+*.egg-info/
+dist/
+node_modules/
+frontend/dist/

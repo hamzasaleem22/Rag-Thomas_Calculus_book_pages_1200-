@@ -1,0 +1,29 @@
+[project]
+name = "rag-book"
+version = "0.1.0"
+description = "GraphRAG pipeline for Thomas' Calculus Early Transcendentals, 14th Edition"
+requires-python = ">=3.11"
+dependencies = [
+    "langchain>=0.3",
+    "langchain-community>=0.3",
+    "langchain-qdrant>=0.2",
+    "langchain-huggingface>=0.1",
+    "langchain-openai>=0.3",
+    "huggingface_hub>=0.27",
+    "marker-pdf",
+    "pypdf>=4.0",
+    "qdrant-client>=1.12",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "ragas>=0.2",
+    "langgraph>=0.3",
+    "langsmith>=0.3",
+    "semantic-text-splitter>=0.2",
+    "pydantic-settings>=2.0",
+    "python-dotenv>=1.0",
+    "aiofiles>=24.0",
+    "httpx>=0.27",
+]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
