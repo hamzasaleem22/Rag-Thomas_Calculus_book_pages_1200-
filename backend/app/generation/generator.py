@@ -60,6 +60,7 @@ class Generator:
         raise RuntimeError(f"All models exhausted after {settings.max_retries} retries")
 
     def format_context(self, documents: list[Document]) -> str:
+        from app.retrieval.math_cleaner import clean_chunk
         lines = []
         for i, doc in enumerate(documents):
             meta = doc.metadata
@@ -72,24 +73,65 @@ class Generator:
             if section:
                 source += f", {section}"
             source += f" (p.{page})"
-            lines.append(f"{source}\n{doc.page_content}\n")
+            # Clean the chunk text before including it in the context
+            cleaned_content = clean_chunk(doc.page_content)
+            lines.append(f"{source}\n{cleaned_content}\n")
         return "\n".join(lines)
 
     def _build_messages(self, query: str, documents: list[Document], history: list[dict] | None = None) -> list[dict]:
         context = self.format_context(documents)
 
-        system_prompt = """You are a precise math tutor for Thomas' Calculus, 14th Edition.
+        system_prompt = """You are a concise math tutor for Thomas' Calculus, 14th Edition.
 
-RULES:
-1. Answer ONLY using the provided context.
-2. Cite EVERY claim, formula, theorem with [N] immediately after the statement.
-3. Structure your answer:
-   - **Answer**: Direct response
-   - **Key Points**: Bulleted list of important concepts
-   - **Formula** (if applicable): Exact mathematical expression
-4. If the context lacks sufficient information, say EXACTLY what is missing.
-5. For formulas, reproduce them exactly as they appear in the source.
-6. Never invent notation, theorems, or proofs not present in the context."""
+RESPONSE STRUCTURE:
+1. **Answer:** 2-3 sentences directly answering the question.
+2. **Key Points:** 2-4 short bullet points (one sentence each).
+3. **Formula:** (only if the answer involves a formula) The key formula on its own line.
+
+CITATIONS: Add [N] after each factual claim. Keep it brief.
+
+MATH FORMATTING — CRITICAL RULES:
+- ALL math MUST be inside $...$ (inline) or $$...$$ (display).
+- NEVER write bare LaTeX commands outside of $...$ delimiters.
+- NEVER output a formula twice (once as LaTeX and once as Unicode).
+
+LaTeX SYNTAX — YOU MUST USE BRACES:
+  \\frac{numerator}{denominator}  ← ALWAYS use {braces} for both parts
+  \\sum_{k=0}^{\\infty}           ← ALWAYS use {braces} for sub/superscripts
+  f^{(n)}(x)                      ← ALWAYS use {braces} for exponents
+
+CORRECT EXAMPLES (copy this style exactly):
+  $\\frac{d}{dx}[\\sin(x)] = \\cos(x)$
+  $\\int_0^1 x^2 \\, dx = \\frac{1}{3}$
+  $\\lim_{x \\to 0} \\frac{\\sin(x)}{x} = 1$
+  $\\sum_{k=0}^{\\infty} \\frac{f^{(k)}(a)}{k!}(x - a)^k$
+  $f'(x) = 2x$
+  $$\\frac{dy}{dx} = f'(g(x)) \\cdot g'(x)$$
+
+WRONG (never do this):
+  \\fracf(x)g(x)     ← MISSING BRACES
+  \\sum k=0 \\infty  ← MISSING BRACES AND $ DELIMITERS
+  f (n) (x)          ← SPACES INSTEAD OF ^{(n)}
+  d¸ots              ← GARBLED COMMAND (use \\dots)
+
+OTHER RULES:
+- Use $f(x)$ not plain "f(x)" outside delimiters.
+- Use $\\sin$, $\\cos$, $\\tan$, $\\ln$, $\\lim$ — always inside $.
+- Keep formulas SHORT. Break complex ones into steps.
+- If source text has garbled math, RECONSTRUCT clean LaTeX.
+
+STYLE: Concise. ChatGPT-style. Max 300 words. No filler.
+
+EXAMPLE RESPONSE:
+**Answer:**
+The Taylor series of $f(x)$ at $x = a$ is an infinite sum using derivatives of $f$ at $a$ [1].
+
+**Key Points:**
+- The Taylor series is $\\sum_{k=0}^{\\infty} \\frac{f^{(k)}(a)}{k!}(x - a)^k$ [1]
+- When $a = 0$, it is called the Maclaurin series [2]
+
+**Formula:**
+$$f(x) = \\sum_{k=0}^{\\infty} \\frac{f^{(k)}(a)}{k!}(x - a)^k$$"""
 
         messages = [{"role": "system", "content": system_prompt}]
 
@@ -206,6 +248,9 @@ Follow the structure: Answer, Key Points, Formula (if applicable). Cite every cl
             max_tokens=2048,
         )
         answer = response.choices[0].message.content
+        # Post-process: fix malformed LaTeX
+        from app.retrieval.latex_sanitizer import sanitize_answer
+        answer = sanitize_answer(answer)
         citations = self._verify_citations(answer, documents)
 
         valid, msg = self._validate_answer(answer, documents)
@@ -222,6 +267,7 @@ Follow the structure: Answer, Key Points, Formula (if applicable). Cite every cl
                 max_tokens=2048,
             )
             answer = response.choices[0].message.content
+            answer = sanitize_answer(answer)
             citations = self._verify_citations(answer, documents)
 
         return {
@@ -249,6 +295,10 @@ Follow the structure: Answer, Key Points, Formula (if applicable). Cite every cl
             if delta:
                 full_answer += delta
                 yield delta
+
+        # Post-process the full answer for LaTeX fixes
+        from app.retrieval.latex_sanitizer import sanitize_answer
+        full_answer = sanitize_answer(full_answer)
 
         citations = self._verify_citations(full_answer, documents)
 

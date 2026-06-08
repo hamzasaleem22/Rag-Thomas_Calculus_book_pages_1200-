@@ -1,1 +1,318 @@
 @import "tailwindcss";
+@import "katex/dist/katex.min.css";
+
+/* ──────────────────────────────────────────────
+   DESIGN TOKENS
+   ────────────────────────────────────────────── */
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", monospace;
+
+  --color-glass: rgba(255, 255, 255, 0.7);
+  --color-glass-strong: rgba(255, 255, 255, 0.85);
+  --color-glass-border: rgba(148, 163, 184, 0.2);
+  --color-glass-border-hover: rgba(148, 163, 184, 0.35);
+
+  --color-gradient-from: #3b82f6;
+  --color-gradient-to: #06b6d4;
+  --color-gradient-accent-from: #8b5cf6;
+  --color-gradient-accent-to: #3b82f6;
+}
+
+/* ──────────────────────────────────────────────
+   BASE STYLES
+   ────────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background: #f8fafc;
+  color: #0f172a;
+  overflow: hidden;
+}
+
+/* ──────────────────────────────────────────────
+   GLASSMORPHISM UTILITIES
+   ────────────────────────────────────────────── */
+.glass {
+  background: var(--color-glass);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  border: 1px solid var(--color-glass-border);
+  box-shadow: 0 4px 24px -2px rgba(0, 0, 0, 0.04),
+              0 2px 8px -2px rgba(0, 0, 0, 0.02);
+}
+
+.glass-strong {
+  background: var(--color-glass-strong);
+  backdrop-filter: blur(28px) saturate(1.6);
+  -webkit-backdrop-filter: blur(28px) saturate(1.6);
+  border: 1px solid var(--color-glass-border);
+  box-shadow: 0 8px 32px -4px rgba(0, 0, 0, 0.06),
+              0 4px 12px -2px rgba(0, 0, 0, 0.03);
+}
+
+.glass-hover {
+  transition: box-shadow 0.25s ease, border-color 0.25s ease, transform 0.2s ease;
+}
+
+.glass-hover:hover {
+  border-color: var(--color-glass-border-hover);
+  box-shadow: 0 8px 40px -4px rgba(59, 130, 246, 0.1),
+              0 4px 16px -2px rgba(0, 0, 0, 0.04);
+}
+
+/* ──────────────────────────────────────────────
+   GRADIENT UTILITIES
+   ────────────────────────────────────────────── */
+.gradient-text {
+  background: linear-gradient(135deg, var(--color-gradient-from), var(--color-gradient-to));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.gradient-bg {
+  background: linear-gradient(135deg, var(--color-gradient-from), var(--color-gradient-to));
+}
+
+.gradient-bg-accent {
+  background: linear-gradient(135deg, var(--color-gradient-accent-from), var(--color-gradient-accent-to));
+}
+
+.gradient-border {
+  position: relative;
+}
+
+.gradient-border::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: linear-gradient(135deg, var(--color-gradient-from), var(--color-gradient-to));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* ──────────────────────────────────────────────
+   KEYFRAME ANIMATIONS
+   ────────────────────────────────────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeInDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes slideOutFade {
+  from { opacity: 1; transform: scale(1); }
+  to   { opacity: 0; transform: scale(0.96); }
+}
+
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.35); }
+  50%       { box-shadow: 0 0 18px 6px rgba(59, 130, 246, 0.12); }
+}
+
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(-6px); }
+}
+
+@keyframes gradientShift {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.92); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes dotPulse {
+  0%, 80%, 100% { transform: scale(0); opacity: 0.4; }
+  40%           { transform: scale(1); opacity: 1; }
+}
+
+/* ──────────────────────────────────────────────
+   ANIMATION UTILITY CLASSES
+   ────────────────────────────────────────────── */
+.animate-fade-in      { animation: fadeIn 0.5s ease-out both; }
+.animate-fade-in-up   { animation: fadeInUp 0.4s ease-out both; }
+.animate-fade-in-down { animation: fadeInDown 0.35s ease-out both; }
+.animate-slide-right  { animation: slideInRight 0.3s ease-out both; }
+.animate-slide-left   { animation: slideInLeft 0.4s ease-out both; }
+.animate-slide-out    { animation: slideOutFade 0.25s ease-in both; }
+.animate-scale-in     { animation: scaleIn 0.3s ease-out both; }
+.animate-pulse-glow   { animation: pulseGlow 2s ease-in-out infinite; }
+.animate-float        { animation: float 3s ease-in-out infinite; }
+.animate-blink        { animation: blink 0.8s step-end infinite; }
+
+.animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(59, 130, 246, 0.06) 25%,
+    rgba(6, 182, 212, 0.12) 50%,
+    rgba(59, 130, 246, 0.06) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s linear infinite;
+}
+
+.animate-gradient {
+  background-size: 200% 200%;
+  animation: gradientShift 8s ease infinite;
+}
+
+/* Staggered children — use with data-delay or nth-child */
+.stagger-children > *:nth-child(1) { animation-delay: 0ms; }
+.stagger-children > *:nth-child(2) { animation-delay: 100ms; }
+.stagger-children > *:nth-child(3) { animation-delay: 200ms; }
+.stagger-children > *:nth-child(4) { animation-delay: 300ms; }
+.stagger-children > *:nth-child(5) { animation-delay: 400ms; }
+
+/* ──────────────────────────────────────────────
+   CUSTOM SCROLLBAR
+   ────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.3);
+  border-radius: 100px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.5);
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.3) transparent;
+}
+
+/* ──────────────────────────────────────────────
+   KATEX OVERRIDES
+   ────────────────────────────────────────────── */
+
+/* Display math blocks in answer text */
+.katex-display {
+  margin: 0.5em 0 !important;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.25rem 0;
+}
+
+/* Base KaTeX font size */
+.katex {
+  font-size: 1.05em !important;
+}
+
+/* Compact mode for FormulaBox — smaller BlockMath */
+.katex-compact .katex-display {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.katex-compact .katex {
+  font-size: 0.95em !important;
+}
+
+/* Inline math within text — slightly larger for readability */
+p .katex,
+span .katex {
+  font-size: 1em !important;
+}
+
+/* Ensure KaTeX error messages don't overflow */
+.katex-error {
+  color: #94a3b8;
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  word-break: break-all;
+}
+
+/* ──────────────────────────────────────────────
+   INTERACTIVE STATES
+   ────────────────────────────────────────────── */
+button,
+[role="button"] {
+  cursor: pointer;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+button:active,
+[role="button"]:active {
+  transform: scale(0.97);
+}
+
+button:disabled,
+[role="button"]:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  transform: none;
+}
+
+/* Focus ring for accessibility */
+:focus-visible {
+  outline: 2px solid var(--color-gradient-from);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ──────────────────────────────────────────────
+   SELECTION COLOR
+   ────────────────────────────────────────────── */
+::selection {
+  background: rgba(59, 130, 246, 0.2);
+  color: inherit;
+}
