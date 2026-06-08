@@ -1,139 +1,224 @@
-import { useState, useRef, useEffect } from "react";
-
-interface Citation {
-  text: string;
-  page: number | null;
-  chapter: string | null;
-  section: string | null;
-}
-
-interface Message {
-  role: "user" | "assistant";
-  content: string;
-  citations?: Citation[];
-  sources?: string[];
-}
+import { useState, useEffect, useRef, useCallback } from "react";
+import { useChat } from "./hooks/useChat";
+import { useChatHistory } from "./hooks/useChatHistory";
+import Header from "./components/layout/Header";
+import ChatContainer from "./components/layout/ChatContainer";
+import ChatInput from "./components/input/ChatInput";
+import GlassCard from "./components/ui/GlassCard";
+import type { ChatSession } from "./types";
+import { formatDate } from "./utils/storage";
 
 function App() {
-  const [query, setQuery] = useState("");
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [loading, setLoading] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const chat = useChat();
+  const history = useChatHistory();
+  const [showHistory, setShowHistory] = useState(false);
+  const historyRef = useRef<HTMLDivElement>(null);
+
+  /* ── Load active session on mount ─────────────── */
+
+  const initializedRef = useRef(false);
+  useEffect(() => {
+    if (initializedRef.current) return;
+    if (history.sessions.length === 0 && history.activeSessionId === null) {
+      // First visit ever — create initial session
+      history.newSession();
+      initializedRef.current = true;
+      return;
+    }
+    if (history.activeSessionId) {
+      const session = history.sessions.find((s) => s.id === history.activeSessionId);
+      if (session && session.messages.length > 0) {
+        chat.loadMessages(session.messages);
+      } else {
+        // Active session has no messages, just start fresh
+        history.newSession();
+      }
+    } else if (history.sessions.length > 0) {
+      // No active session but sessions exist — load the most recent
+      history.switchSession(history.sessions[0].id);
+      chat.loadMessages(history.sessions[0].messages);
+    } else {
+      history.newSession();
+    }
+    initializedRef.current = true;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [history.sessions, history.activeSessionId]);
+
+  /* ── Auto-save messages to session ────────────── */
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!query.trim() || loading) return;
-
-    const userMsg: Message = { role: "user", content: query };
-    setMessages((prev) => [...prev, userMsg]);
-    setQuery("");
-    setLoading(true);
-
-    try {
-      const res = await fetch("/api/query", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query, top_k: 10, rerank: true }),
-      });
-      const data = await res.json();
-
-      const assistantMsg: Message = {
-        role: "assistant",
-        content: data.answer,
-        citations: data.citations,
-        sources: data.sources,
-      };
-      setMessages((prev) => [...prev, assistantMsg]);
-    } catch {
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: "Error contacting server." },
-      ]);
-    } finally {
-      setLoading(false);
+    if (!initializedRef.current) return;
+    if (chat.messages.length > 0) {
+      history.saveCurrentSession(chat.messages);
     }
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chat.messages]);
+
+  /* ── Close history dropdown on outside click ──── */
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (historyRef.current && !historyRef.current.contains(e.target as Node)) {
+        setShowHistory(false);
+      }
+    }
+    if (showHistory) {
+      document.addEventListener("mousedown", handleClick);
+      return () => document.removeEventListener("mousedown", handleClick);
+    }
+  }, [showHistory]);
+
+  /* ── New Chat handler ─────────────────────────── */
+
+  const handleNewChat = useCallback(() => {
+    // Save current session before starting new
+    if (chat.messages.length > 0) {
+      history.saveCurrentSession(chat.messages);
+    }
+    chat.clearChat();
+    history.newSession();
+    setShowHistory(false);
+  }, [chat, history]);
+
+  /* ── Session switch handler ───────────────────── */
+
+  const handleSwitchSession = useCallback(
+    (id: string) => {
+      // Save current session
+      if (chat.messages.length > 0) {
+        history.saveCurrentSession(chat.messages);
+      }
+      // Switch
+      history.switchSession(id);
+      const session = history.sessions.find((s) => s.id === id);
+      if (session) {
+        chat.loadMessages(session.messages);
+      } else {
+        chat.clearChat();
+      }
+      setShowHistory(false);
+    },
+    [chat, history]
+  );
+
+  /* ── Session delete handler ───────────────────── */
+
+  const handleDeleteSession = useCallback(
+    (id: string) => {
+      const wasActive = history.activeSessionId === id;
+      history.deleteSession(id);
+
+      if (wasActive) {
+        chat.clearChat();
+        // After delete, if sessions remain, load the first one
+        const remaining = history.sessions.filter((s) => s.id !== id);
+        if (remaining.length > 0) {
+          history.switchSession(remaining[0].id);
+          chat.loadMessages(remaining[0].messages);
+        } else {
+          history.newSession();
+        }
+      }
+    },
+    [chat, history]
+  );
 
   return (
-    <div className="flex flex-col h-dvh bg-neutral-900 text-neutral-100">
-      <header className="border-b border-neutral-700 p-4">
-        <h1 className="text-xl font-bold">Thomas' Calculus RAG</h1>
-        <p className="text-sm text-neutral-400">Ask questions about the 14th Edition</p>
-      </header>
+    <div className="flex flex-col h-dvh bg-slate-50 animate-fade-in">
+      {/* ── Header ──────────────────────────────── */}
+      <div className="relative">
+        <Header
+          onNewChat={handleNewChat}
+          onToggleHistory={() => setShowHistory((v) => !v)}
+          sessionCount={history.sessions.filter((s) => s.messages.length > 0).length}
+          showHistory={showHistory}
+        />
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.length === 0 && (
-          <div className="text-center text-neutral-500 mt-20">
-            <p className="text-lg">Ask a question about Thomas' Calculus</p>
-            <p className="text-sm mt-2">e.g. "What is the formula for the derivative of sin(x)?"</p>
-          </div>
-        )}
-        {messages.map((msg, i) => (
+        {/* ── History Dropdown ──────────────────── */}
+        {showHistory && (
           <div
-            key={i}
-            className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+            ref={historyRef}
+            className="absolute top-full right-4 z-50 mt-2 w-80 animate-fade-in-down"
           >
-            <div
-              className={`max-w-[80%] rounded-2xl px-4 py-3 ${
-                msg.role === "user"
-                  ? "bg-blue-600 text-white"
-                  : "bg-neutral-800 text-neutral-100"
-              }`}
-            >
-              <div className="whitespace-pre-wrap">{msg.content}</div>
-              {msg.citations && msg.citations.length > 0 && (
-                <details className="mt-2 text-xs text-neutral-400">
-                  <summary className="cursor-pointer hover:text-neutral-300">
-                    Sources ({msg.citations.length})
-                  </summary>
-                  <div className="mt-1 space-y-1">
-                    {msg.citations.map((c, j) => (
-                      <div key={j} className="border-l-2 border-neutral-600 pl-2 py-1">
-                        <span className="text-neutral-500">
-                          p.{c.page}
-                          {c.chapter && ` · ${c.chapter}`}
-                        </span>
-                        <p className="truncate">{c.text.slice(0, 150)}...</p>
+            <GlassCard strong className="p-2 shadow-xl max-h-96 overflow-y-auto">
+              <div className="px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                Chat History
+              </div>
+
+              {history.sessions.length === 0 ? (
+                <p className="px-3 py-4 text-sm text-slate-400 text-center">
+                  No previous conversations
+                </p>
+              ) : (
+                <div className="space-y-0.5">
+                  {history.sessions.map((session: ChatSession) => (
+                    <div
+                      key={session.id}
+                      className={`group flex items-center gap-2 px-3 py-2.5 rounded-xl cursor-pointer transition-colors ${
+                        session.id === history.activeSessionId
+                          ? "bg-blue-50 border border-blue-100"
+                          : "hover:bg-slate-50"
+                      }`}
+                      onClick={() => handleSwitchSession(session.id)}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-slate-800 truncate font-medium">
+                          {session.title || "New Chat"}
+                        </p>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          {session.messages.length} messages · {formatDate(session.updatedAt)}
+                        </p>
                       </div>
-                    ))}
-                  </div>
-                </details>
+
+                      {/* Delete button */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteSession(session.id);
+                        }}
+                        className="opacity-0 group-hover:opacity-100 p-1 rounded-lg
+                          text-slate-400 hover:text-red-500 hover:bg-red-50
+                          transition-all duration-150 shrink-0"
+                        title="Delete conversation"
+                      >
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <polyline points="3 6 5 6 21 6" />
+                          <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                        </svg>
+                      </button>
+                    </div>
+                  ))}
+                </div>
               )}
-            </div>
-          </div>
-        ))}
-        {loading && (
-          <div className="flex justify-start">
-            <div className="bg-neutral-800 rounded-2xl px-4 py-3 text-neutral-400">
-              Thinking...
-            </div>
+            </GlassCard>
           </div>
         )}
-        <div ref={bottomRef} />
       </div>
 
-      <form onSubmit={handleSubmit} className="border-t border-neutral-700 p-4">
-        <div className="flex gap-2">
-          <input
-            className="flex-1 rounded-xl bg-neutral-800 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="Ask a question..."
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            disabled={loading}
-          />
-          <button
-            type="submit"
-            disabled={loading || !query.trim()}
-            className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-medium disabled:opacity-50 hover:bg-blue-700"
-          >
-            Send
-          </button>
-        </div>
-      </form>
+      {/* ── Chat Area ───────────────────────────── */}
+      <ChatContainer
+        messages={chat.messages}
+        isStreaming={chat.isStreaming}
+        onSend={chat.sendMessage}
+        onRegenerate={chat.regenerateMessage}
+        onDelete={chat.deleteMessage}
+      />
+
+      {/* ── Input Bar ───────────────────────────── */}
+      <ChatInput
+        onSend={chat.sendMessage}
+        isStreaming={chat.isStreaming}
+        onCancel={chat.cancelStream}
+      />
     </div>
   );
 }
