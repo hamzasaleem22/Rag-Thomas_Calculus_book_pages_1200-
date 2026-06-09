@@ -1,7 +1,9 @@
 """Unit tests for chunking, cleaning, BM25, and reranking."""
-import json, sys, pickle, re
+import json
+import tempfile
+import pickle
+import pytest
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from langchain_core.documents import Document
 from app.ingestion.cleaner import (
@@ -14,7 +16,6 @@ from app.ingestion.chunker import (
 )
 from app.retrieval.vector_store import BM25SparseEmbeddings
 from app.retrieval.expansion import expand_query, expand_query_text
-from app.config import settings
 
 
 def test_clean_text():
@@ -80,12 +81,12 @@ def test_inject_markdown_headers():
 
 
 def test_has_unmatched_latex():
-    assert _has_unmatched_latex("x^2") == False
-    assert _has_unmatched_latex("$x$") == False
-    assert _has_unmatched_latex("$$x^2$$") == False
-    assert _has_unmatched_latex("$x$ and $y$") == False
-    assert _has_unmatched_latex("$x") == True
-    assert _has_unmatched_latex("$$x^2") == True
+    assert not _has_unmatched_latex("x^2")
+    assert not _has_unmatched_latex("$x$")
+    assert not _has_unmatched_latex("$$x^2$$")
+    assert not _has_unmatched_latex("$x$ and $y$")
+    assert _has_unmatched_latex("$x")
+    assert _has_unmatched_latex("$$x^2")
 
 
 def test_fix_broken_latex():
@@ -129,7 +130,7 @@ def test_bm25_sparse_embeddings():
     ]
     sparse_vectors = bm25.embed_documents(texts)
     assert len(sparse_vectors) == 3
-    assert bm25.fitted == True
+    assert bm25.fitted
     assert len(bm25.vocab) > 0
     assert bm25.num_docs == 3
 
@@ -139,7 +140,6 @@ def test_bm25_sparse_embeddings():
 
 
 def test_bm25_from_pickle():
-    import tempfile, pickle
     bm25 = BM25SparseEmbeddings()
     bm25.embed_documents(["test document with math content derivative integral"])
     state = {
@@ -153,7 +153,7 @@ def test_bm25_from_pickle():
         tmp_path = f.name
 
     loaded = BM25SparseEmbeddings.from_pickle(tmp_path)
-    assert loaded.fitted == True
+    assert loaded.fitted
     assert len(loaded.vocab) > 0
 
     q = loaded.embed_query("derivative")
@@ -192,40 +192,3 @@ def test_chunk_no_tiny():
     chunks = chunk_documents(docs)
     for c in chunks:
         assert len(c.page_content.strip()) >= 50
-
-
-if __name__ == "__main__":
-    tests = [
-        ("test_clean_text", test_clean_text),
-        ("test_normalize_latex", test_normalize_latex),
-        ("test_fix_unicode_artifacts", test_fix_unicode_artifacts),
-        ("test_remove_footers", test_remove_footers),
-        ("test_remove_garbled_lines", test_remove_garbled_lines),
-        ("test_clean_document", test_clean_document),
-        ("test_inject_markdown_headers", test_inject_markdown_headers),
-        ("test_has_unmatched_latex", test_has_unmatched_latex),
-        ("test_fix_broken_latex", test_fix_broken_latex),
-        ("test_enforce_theorem_boundary", test_enforce_theorem_boundary),
-        ("test_chunk_documents", test_chunk_documents),
-        ("test_bm25_sparse_embeddings", test_bm25_sparse_embeddings),
-        ("test_bm25_from_pickle", test_bm25_from_pickle),
-        ("test_query_expansion", test_query_expansion),
-        ("test_normalize_latex_consistency", test_normalize_latex_consistency),
-        ("test_chunk_no_tiny", test_chunk_no_tiny),
-    ]
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        try:
-            fn()
-            print(f"  ✅ {name}")
-            passed += 1
-        except Exception as e:
-            print(f"  ❌ {name}: {e}")
-            failed += 1
-    print(f"\n{'='*40}")
-    print(f"Passed: {passed}/{len(tests)}")
-    if failed:
-        print(f"Failed: {failed}")
-    else:
-        print("All tests passed! ✅")

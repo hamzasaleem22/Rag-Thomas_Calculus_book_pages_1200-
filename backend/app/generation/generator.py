@@ -5,6 +5,8 @@ from typing import Optional, Generator
 from openai import OpenAI
 from langchain_core.documents import Document
 from app.config import settings
+from app.retrieval.math_cleaner import clean_chunk
+from app.retrieval.latex_sanitizer import sanitize_answer
 
 
 class Generator:
@@ -60,7 +62,6 @@ class Generator:
         raise RuntimeError(f"All models exhausted after {settings.max_retries} retries")
 
     def format_context(self, documents: list[Document]) -> str:
-        from app.retrieval.math_cleaner import clean_chunk
         lines = []
         for i, doc in enumerate(documents):
             meta = doc.metadata
@@ -248,8 +249,6 @@ Follow the structure: Answer, Key Points, Formula (if applicable). Cite every cl
             max_tokens=2048,
         )
         answer = response.choices[0].message.content
-        # Post-process: fix malformed LaTeX
-        from app.retrieval.latex_sanitizer import sanitize_answer
         answer = sanitize_answer(answer)
         citations = self._verify_citations(answer, documents)
 
@@ -281,6 +280,7 @@ Follow the structure: Answer, Key Points, Formula (if applicable). Cite every cl
     ) -> Generator[str, None, dict]:
         messages = self._build_messages(query, documents, history)
         full_answer = ""
+        last_yielded_len = 0
 
         stream = self._call_llm(
             messages,
@@ -294,13 +294,13 @@ Follow the structure: Answer, Key Points, Formula (if applicable). Cite every cl
             delta = chunk.choices[0].delta.content or ""
             if delta:
                 full_answer += delta
-                yield delta
+                sanitized = sanitize_answer(full_answer)
+                new_text = sanitized[last_yielded_len:]
+                if new_text:
+                    yield new_text
+                    last_yielded_len = len(sanitized)
 
-        # Post-process the full answer for LaTeX fixes
-        from app.retrieval.latex_sanitizer import sanitize_answer
-        full_answer = sanitize_answer(full_answer)
-
-        citations = self._verify_citations(full_answer, documents)
+        citations = self._verify_citations(sanitize_answer(full_answer), documents)
 
         yield {
             "citations": citations,

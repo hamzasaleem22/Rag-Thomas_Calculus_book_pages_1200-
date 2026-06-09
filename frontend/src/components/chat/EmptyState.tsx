@@ -56,6 +56,7 @@ export default function EmptyState({ onExampleClick }: EmptyStateProps) {
           >
             <GlassCard
               hover
+              glow
               onClick={() => onExampleClick(example.text)}
               className="p-4 w-full"
             >

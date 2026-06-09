@@ -1,7 +1,7 @@
 import json, sys, os, math
-os.environ["OPENAI_API_KEY"] = "sk-71ac1c63eb0ace5c-hih7bl-c3910a8f"
-os.environ["OPENAI_BASE_URL"] = "http://localhost:20128/v1"
-os.environ["OPENAI_API_BASE"] = "http://localhost:20128/v1"
+os.environ["OPENAI_API_KEY"] = os.environ.get("OPENAI_API_KEY", "")
+os.environ["OPENAI_BASE_URL"] = os.environ.get("OPENAI_BASE_URL", "http://localhost:20128/v1")
+os.environ["OPENAI_API_BASE"] = os.environ.get("OPENAI_API_BASE", "http://localhost:20128/v1")
 
 from datasets import Dataset
 from ragas import evaluate
@@ -10,12 +10,11 @@ from app.config import settings
 from app.retrieval.vector_store import HybridVectorStore
 from app.retrieval.reranker import Reranker
 from app.generation.generator import Generator
-import pickle
+from qdrant_client import QdrantClient
 
-with open("/tmp/qdrant_calculus.pkl", "rb") as f:
-    client = pickle.load(f)
+client = QdrantClient(path="/tmp/qdrant_calculus_db")
 
-store = HybridVectorStore(client=client)
+store = HybridVectorStore(client=client, bm25_path="/tmp/qdrant_calculus_bm25.pkl")
 reranker = Reranker()
 generator = Generator()
 

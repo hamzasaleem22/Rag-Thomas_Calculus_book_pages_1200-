@@ -31,8 +31,9 @@ def compress_chunk(query: str, doc: Document, doc_index: int) -> Optional[Docume
         )
 
         elapsed = time.time() - _last_request_time
-        if elapsed < settings.request_delay * 0.5:
-            time.sleep(settings.request_delay * 0.5 - elapsed)
+        min_delay = min(settings.request_delay * 0.1, 0.5)
+        if elapsed < min_delay:
+            time.sleep(min_delay - elapsed)
         _last_request_time = time.time()
 
         response = client.chat.completions.create(

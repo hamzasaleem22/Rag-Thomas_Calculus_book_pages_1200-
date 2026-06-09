@@ -7,6 +7,7 @@ class QueryRequest(BaseModel):
     top_k: int = 0
     rerank: bool = True
     use_mmr: bool = False
+    history: list[dict] = []
 
 
 class Citation(BaseModel):

@@ -1,12 +1,10 @@
 import json
-import time
+import asyncio
 from typing import Optional
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
 from qdrant_client import QdrantClient
-from langchain_core.documents import Document
 from app.config import settings
 from app.retrieval.vector_store import HybridVectorStore
 from app.retrieval.reranker import Reranker
@@ -29,13 +27,6 @@ vector_store: Optional[HybridVectorStore] = None
 reranker: Optional[Reranker] = None
 generator: Optional[Generator] = None
 
-
-class StreamQuery(BaseModel):
-    query: str
-    top_k: int = 0
-    rerank: bool = True
-    use_mmr: bool = False
-    history: list[dict] = []
 
 
 def get_vector_store() -> HybridVectorStore:
@@ -69,6 +60,7 @@ def retrieve_and_rerank(query: str, top_k: int = 0, rerank: bool = True, use_mmr
     store = get_vector_store()
 
     retrieval_query = query
+    hyde_doc = None
     if settings.use_hyde:
         from app.retrieval.hyde import generate_hypothetical_document
         hyde_doc = generate_hypothetical_document(query)
@@ -78,9 +70,7 @@ def retrieve_and_rerank(query: str, top_k: int = 0, rerank: bool = True, use_mmr
     expanded = expand_query_text(retrieval_query)
     docs = store.similarity_search(expanded, k=top_k or settings.top_k_retrieve)
 
-    if settings.use_hyde and docs:
-        from app.retrieval.hyde import generate_hypothetical_document
-        hyde_doc = generate_hypothetical_document(query)
+    if settings.use_hyde and docs and hyde_doc:
         hyde_results = store.similarity_search(hyde_doc, k=top_k or settings.top_k_retrieve)
         seen_ids = {id(d) for d in docs}
         for d in hyde_results:
@@ -123,7 +113,8 @@ async def health():
 
 @app.post("/query", response_model=QueryResponse)
 async def query(req: QueryRequest):
-    docs = retrieve_and_rerank(req.query, req.top_k, req.rerank, req.use_mmr)
+    loop = asyncio.get_event_loop()
+    docs = await loop.run_in_executor(None, retrieve_and_rerank, req.query, req.top_k, req.rerank, req.use_mmr)
 
     if not docs:
         return QueryResponse(answer="No relevant information found.", citations=[], sources=[])
@@ -147,8 +138,9 @@ async def query(req: QueryRequest):
 
 
 @app.post("/query/stream")
-async def query_stream(req: StreamQuery):
-    docs = retrieve_and_rerank(req.query, req.top_k, req.rerank, req.use_mmr)
+async def query_stream(req: QueryRequest):
+    loop = asyncio.get_event_loop()
+    docs = await loop.run_in_executor(None, retrieve_and_rerank, req.query, req.top_k, req.rerank, req.use_mmr)
 
     if not docs:
         async def no_results():
@@ -211,8 +203,14 @@ async def ingest():
 
 @app.get("/metrics")
 async def metrics():
+    store = get_vector_store()
+    try:
+        count_result = store.client.count(collection_name=settings.qdrant_collection)
+        chunk_count = count_result.count
+    except Exception:
+        chunk_count = 0
     return {
-        "chunk_count": 1316,
+        "chunk_count": chunk_count,
         "embedding_model": settings.embedding_model,
         "llm_model": settings.llm_model,
         "reranker_model": settings.reranker_model,

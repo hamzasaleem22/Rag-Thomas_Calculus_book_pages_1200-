@@ -5,6 +5,7 @@ interface GlassCardProps {
   className?: string;
   hover?: boolean;
   strong?: boolean;
+  glow?: boolean;
   onClick?: () => void;
 }
 
@@ -13,12 +14,13 @@ export default function GlassCard({
   className = "",
   hover = false,
   strong = false,
+  glow = false,
   onClick,
 }: GlassCardProps) {
   return (
     <div
       onClick={onClick}
-      className={`${strong ? "glass-strong" : "glass"} ${hover ? "glass-hover" : ""} rounded-2xl ${onClick ? "cursor-pointer" : ""} ${className}`}
+      className={`${strong ? "glass-strong" : "glass"} ${hover ? "glass-hover" : ""} ${glow ? "glass-glow" : ""} rounded-2xl ${onClick ? "cursor-pointer" : ""} ${className}`}
     >
       {children}
     </div>

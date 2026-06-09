@@ -31,8 +31,8 @@ export default function AssistantBubble({ message, isStreaming = false }: Assist
       <div className="max-w-[85%] w-full">
         {/* Header: bot avatar + label */}
         <div className="flex items-center gap-2 mb-1.5">
-          <span className="gradient-text text-base font-bold">&#9670;</span>
-          <span className="text-xs font-semibold text-slate-500">Assistant</span>
+          <span className="text-cyan-500 text-base font-bold">&#9670;</span>
+          <span className="text-xs font-semibold text-slate-600">Assistant</span>
         </div>
 
         <GlassCard className="p-4 shadow-md">
@@ -40,7 +40,7 @@ export default function AssistantBubble({ message, isStreaming = false }: Assist
             /* ── Streaming text with blinking cursor ── */
             <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
               {message.content}
-              <span className="animate-blink text-blue-500 font-bold ml-0.5">|</span>
+              <span className="animate-blink text-cyan-500 font-bold ml-0.5">|</span>
             </p>
           ) : hasWidgets ? (
             /* ── Structured widgets with citations passed down ── */
