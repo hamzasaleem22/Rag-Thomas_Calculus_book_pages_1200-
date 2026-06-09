@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { Message } from "../../types";
 import GlassCard from "../ui/GlassCard";
 import AnswerSummary from "../widgets/AnswerSummary";
@@ -23,8 +24,34 @@ export default function AssistantBubble({ message, isStreaming = false }: Assist
   });
 
   const citations = message.citations ?? [];
-  const parsed = !isStreaming ? parseAnswer(message.content) : null;
+  const parsed = parseAnswer(message.content);
   const hasWidgets = parsed && (parsed.summary || parsed.keyPoints.length > 0 || parsed.formulas.length > 0);
+
+  let contentNode: ReactNode;
+
+  if (hasWidgets) {
+    // ── Structured widgets with KaTeX rendering ──
+    contentNode = (
+      <div className="space-y-3 stagger-children">
+        {parsed.summary && (
+          <AnswerSummary content={parsed.summary} citations={citations} />
+        )}
+        {parsed.keyPoints.length > 0 && (
+          <KeyPointsList points={parsed.keyPoints} citations={citations} />
+        )}
+        {parsed.formulas.length > 0 && (
+          <FormulaBox formulas={parsed.formulas} />
+        )}
+      </div>
+    );
+  } else {
+    // ── Fallback: plain text ──
+    contentNode = (
+      <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
+        {message.content}
+      </p>
+    );
+  }
 
   return (
     <div className="flex justify-start animate-slide-left">
@@ -36,30 +63,11 @@ export default function AssistantBubble({ message, isStreaming = false }: Assist
         </div>
 
         <GlassCard className="p-4 shadow-md">
-          {isStreaming ? (
-            /* ── Streaming text with blinking cursor ── */
-            <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
-              {message.content}
-              <span className="animate-blink text-cyan-500 font-bold ml-0.5">|</span>
-            </p>
-          ) : hasWidgets ? (
-            /* ── Structured widgets with citations passed down ── */
-            <div className="space-y-3 stagger-children">
-              {parsed!.summary && (
-                <AnswerSummary content={parsed!.summary} citations={citations} />
-              )}
-              {parsed!.keyPoints.length > 0 && (
-                <KeyPointsList points={parsed!.keyPoints} citations={citations} />
-              )}
-              {parsed!.formulas.length > 0 && (
-                <FormulaBox formulas={parsed!.formulas} />
-              )}
-            </div>
-          ) : (
-            /* ── Fallback: plain text ── */
-            <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
-              {message.content}
-            </p>
+          {contentNode}
+
+          {/* ── Streaming cursor ── */}
+          {isStreaming && (
+            <span className="animate-blink text-cyan-500 font-bold ml-0.5">|</span>
           )}
 
           {/* ── Sources section (shown after streaming completes) ── */}

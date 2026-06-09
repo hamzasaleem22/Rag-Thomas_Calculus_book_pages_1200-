@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     use_self_consistency: bool = False
     self_consistency_samples: int = 3
     self_consistency_temperature: float = 0.3
+    use_reranker: bool = True
+    rerank_skip_threshold: int = 0
+    use_compression: bool = True
+    compression_mode: str = "auto"
+    relevance_threshold: float = 0.15
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 

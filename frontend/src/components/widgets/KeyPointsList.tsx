@@ -4,6 +4,7 @@ import { InlineMath } from "react-katex";
 import type { Citation } from "../../types";
 import { renderCitationText } from "./CitationPopup";
 import { sanitizeLatex } from "../../utils/latexSanitizer";
+import { MathErrorBoundary } from "../ui/MathErrorBoundary";
 
 interface KeyPointsListProps {
   points: string[];
@@ -29,7 +30,9 @@ function renderPointText(
     if (part.startsWith("$$") && part.endsWith("$$") && part.length > 4) {
       const latex = sanitizeLatex(part.slice(2, -2).trim());
       elements.push(
-        <InlineMath key={`kp-d-${pointIdx}-${i}`} math={latex} />,
+        <MathErrorBoundary key={`kp-d-${pointIdx}-${i}`} latex={latex}>
+          <InlineMath math={latex} />
+        </MathErrorBoundary>,
       );
     } else {
       // Split on inline math $...$
@@ -37,11 +40,11 @@ function renderPointText(
 
       inlineParts.forEach((segment, j) => {
         if (j % 2 === 1) {
+          const latex = sanitizeLatex(segment.trim());
           elements.push(
-            <InlineMath
-              key={`kp-i-${pointIdx}-${i}-${j}`}
-              math={sanitizeLatex(segment.trim())}
-            />,
+            <MathErrorBoundary key={`kp-i-${pointIdx}-${i}-${j}`} latex={latex}>
+              <InlineMath math={latex} />
+            </MathErrorBoundary>,
           );
         } else if (segment.length > 0) {
           if (citations.length > 0) {

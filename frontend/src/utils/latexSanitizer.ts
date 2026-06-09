@@ -20,6 +20,16 @@ export function sanitizeLatex(latex: string): string {
 
   let result = latex;
 
+  // ── 0. Fix spacing primitives (defense-in-depth) ──────────────────
+  // \tmspace + 3mu.1667em → \, (thin space implementation detail)
+  result = result.replace(/\\tmspace[^]*?(?=\\|\$|$)/g, "\\,");
+  // \kern 3.0pt → (strip)
+  result = result.replace(/\\kern\s*[+-]?\s*[\d.]+\s*(?:pt|pc|in|bp|cm|mm|em|ex|mu)/g, " ");
+  // \hskip, \vskip, \mskip, \mkern → (strip)
+  result = result.replace(/\\(?:hskip|vskip|mskip|mkern)\s*[+-]?\s*[\d.]*(?:\s*(?:pt|pc|in|bp|cm|mm|em|ex|mu))?/g, " ");
+  // Collapse multiple spaces
+  result = result.replace(/  +/g, " ");
+
   // ── 1. Fix garbled characters ──────────────────────────────────────
   // d¸ots → \dots (cedilla corruption from PDF extraction)
   result = result.replace(/d¸\s*ots/g, "\\dots");

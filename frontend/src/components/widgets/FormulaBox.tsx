@@ -1,53 +1,11 @@
-import { Component, type ReactNode, type ErrorInfo } from "react";
 import GlassCard from "../ui/GlassCard";
 import { BlockMath, InlineMath } from "react-katex";
 import { sanitizeLatex } from "../../utils/latexSanitizer";
+import { MathErrorBoundary } from "../ui/MathErrorBoundary";
 
 interface FormulaBoxProps {
   formulas: string[];
   className?: string;
-}
-
-/* ──────────────────────────────────────────────────────────────────────────
-   KaTeX Error Boundary
-   ────────────────────────────────────────────────────────────────────────── */
-
-interface MathErrorBoundaryProps {
-  latex: string;
-  children: ReactNode;
-}
-
-interface MathErrorBoundaryState {
-  hasError: boolean;
-}
-
-class MathErrorBoundary extends Component<
-  MathErrorBoundaryProps,
-  MathErrorBoundaryState
-> {
-  constructor(props: MathErrorBoundaryProps) {
-    super(props);
-    this.state = { hasError: false };
-  }
-
-  static getDerivedStateFromError(): MathErrorBoundaryState {
-    return { hasError: true };
-  }
-
-  componentDidCatch(_error: Error, _info: ErrorInfo) {
-    // Silently handled
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <code className="text-sm font-mono text-slate-500 block whitespace-pre-wrap">
-          {this.props.latex}
-        </code>
-      );
-    }
-    return this.props.children;
-  }
 }
 
 /* ──────────────────────────────────────────────────────────────────────────

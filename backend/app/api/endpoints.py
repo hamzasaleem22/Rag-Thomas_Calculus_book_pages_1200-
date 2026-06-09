@@ -1,4 +1,5 @@
 import json
+import re
 import asyncio
 from typing import Optional
 from fastapi import FastAPI
@@ -56,6 +57,19 @@ def get_generator() -> Generator:
     return generator
 
 
+def _compute_query_doc_relevance(query: str, docs: list) -> float:
+    """Compute how well the query tokens overlap with retrieved documents."""
+    query_tokens = set(re.findall(r'\b[a-zA-Z]\w+\b', query.lower()))
+    stopwords = {'the', 'is', 'at', 'which', 'what', 'how', 'do', 'does', 'a', 'an',
+                 'and', 'or', 'of', 'to', 'for', 'in', 'on', 'by', 'with', 'from', 'its'}
+    query_tokens -= stopwords
+    if not query_tokens:
+        return 1.0
+    all_doc_text = " ".join(d.page_content.lower() for d in docs[:3])
+    matched = sum(1 for t in query_tokens if t in all_doc_text)
+    return matched / len(query_tokens)
+
+
 def retrieve_and_rerank(query: str, top_k: int = 0, rerank: bool = True, use_mmr: bool = False):
     store = get_vector_store()
 
@@ -77,6 +91,16 @@ def retrieve_and_rerank(query: str, top_k: int = 0, rerank: bool = True, use_mmr
             if id(d) not in seen_ids:
                 docs.append(d)
                 seen_ids.add(id(d))
+
+    # Relevance check: if query terms barely overlap with docs, return empty
+    if docs and query.strip():
+        relevance = _compute_query_doc_relevance(query, docs)
+        if relevance < settings.relevance_threshold:
+            print(f"  Low relevance ({relevance:.2f} < {settings.relevance_threshold}), refusing generation")
+            return []
+
+    if not settings.use_reranker:
+        rerank = False
 
     if rerank and docs:
         r = get_reranker()
@@ -100,8 +124,9 @@ def retrieve_and_rerank(query: str, top_k: int = 0, rerank: bool = True, use_mmr
         docs = [docs[i] for i in sorted(kept_indices)]
 
     if docs:
-        from app.retrieval.compression import compress_documents
-        docs = compress_documents(query, docs)
+        if settings.use_compression:
+            from app.retrieval.compression import compress_documents
+            docs = compress_documents(query, docs)
 
     return docs
 
@@ -117,7 +142,8 @@ async def query(req: QueryRequest):
     docs = await loop.run_in_executor(None, retrieve_and_rerank, req.query, req.top_k, req.rerank, req.use_mmr)
 
     if not docs:
-        return QueryResponse(answer="No relevant information found.", citations=[], sources=[])
+        refusal_msg = "I'm sorry, I can only answer questions about calculus from Thomas' Calculus, 14th Edition. Your question doesn't appear to be covered in this textbook."
+        return QueryResponse(answer=refusal_msg, citations=[], sources=[])
 
     gen = get_generator()
     result = gen.generate(req.query, docs)
@@ -143,8 +169,9 @@ async def query_stream(req: QueryRequest):
     docs = await loop.run_in_executor(None, retrieve_and_rerank, req.query, req.top_k, req.rerank, req.use_mmr)
 
     if not docs:
+        refusal_msg = "I'm sorry, I can only answer questions about calculus from Thomas' Calculus, 14th Edition. Your question doesn't appear to be covered in this textbook."
         async def no_results():
-            yield f"data: {json.dumps({'type': 'error', 'content': 'No relevant information found.'})}\n\n"
+            yield f"data: {json.dumps({'type': 'token', 'content': refusal_msg})}\n\n"
             yield "data: [DONE]\n\n"
         return StreamingResponse(no_results(), media_type="text/event-stream")
 

@@ -132,6 +132,18 @@ GROUND_TRUTHS = {
             "truth": "OUT_OF_SCOPE",
             "keywords": [],
         },
+        {
+            "id": "o02", "type": "ood",
+            "query": "Write me a poem about calculus",
+            "truth": "OUT_OF_SCOPE",
+            "keywords": [],
+        },
+        {
+            "id": "o03", "type": "ood",
+            "query": "What is the meaning of life?",
+            "truth": "OUT_OF_SCOPE",
+            "keywords": [],
+        },
     ],
     "adversarial": [
         {
@@ -142,6 +154,11 @@ GROUND_TRUTHS = {
         {
             "id": "a02", "type": "adversarial",
             "query": "Derivativ of sin(x)?",
+            "keywords": ["sin", "cos", "derivative"],
+        },
+        {
+            "id": "a03", "type": "adversarial",
+            "query": "wh@t 1s d/dx s1n(x)?",
             "keywords": ["sin", "cos", "derivative"],
         },
     ],
@@ -836,6 +853,7 @@ def phase_5_robustness():
             "don't know", "not in the", "no information", "cannot answer",
             "out of scope", "not found", "not relevant", "not covered",
             "no relevant", "unable to", "beyond the scope", "the corpus",
+            "i'm sorry", "only answer questions about calculus",
         ]
         refuses = any(p in ans_lower for p in refusal_patterns)
         score = 1.0 if refuses else 0.0

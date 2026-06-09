@@ -111,6 +111,8 @@ CORRECT EXAMPLES (copy this style exactly):
 
 WRONG (never do this):
   \\fracf(x)g(x)     ← MISSING BRACES
+  \\fracdydx         ← MISSING ALL BRACES (must be \\frac{dy}{dx})
+  \\fracdydudot\\fracdudx  ← MISSING BRACES AND \\cdot (use \\frac{dy}{du} \\cdot \\frac{du}{dx})
   \\sum k=0 \\infty  ← MISSING BRACES AND $ DELIMITERS
   f (n) (x)          ← SPACES INSTEAD OF ^{(n)}
   d¸ots              ← GARBLED COMMAND (use \\dots)
@@ -120,6 +122,15 @@ OTHER RULES:
 - Use $\\sin$, $\\cos$, $\\tan$, $\\ln$, $\\lim$ — always inside $.
 - Keep formulas SHORT. Break complex ones into steps.
 - If source text has garbled math, RECONSTRUCT clean LaTeX.
+
+SCOPE & UNCERTAINTY — CRITICAL RULES:
+- ONLY answer questions about calculus, math, or related topics from Thomas' Calculus, 14th Edition.
+- If the question is NOT about calculus/mathematics (e.g. history, geography, general knowledge), respond with:
+  "I'm sorry, I can only answer questions about calculus from Thomas' Calculus, 14th Edition."
+- If the retrieved documents do NOT contain sufficient information to answer, respond with:
+  "I don't have enough information in the textbook to answer this question."
+- NEVER fabricate formulas, theorems, or definitions not found in the provided context.
+- If you are uncertain about a claim, do not guess. State what you know and note the uncertainty.
 
 STYLE: Concise. ChatGPT-style. Max 300 words. No filler.
 
@@ -145,7 +156,9 @@ $$f(x) = \\sum_{k=0}^{\\infty} \\frac{f^{(k)}(a)}{k!}(x - a)^k$$"""
 
 Question: {query}
 
-Follow the structure: Answer, Key Points, Formula (if applicable). Cite every claim."""
+Follow the structure: Answer, Key Points, Formula (if applicable). Cite every claim.
+
+CRITICAL: Review your output for LaTeX errors before responding. Every formula must have: (1) $ or $$ delimiters, (2) braces for all \\frac arguments, (3) braces for all subscripts and superscripts."""
         messages.append({"role": "user", "content": user_prompt})
         return messages
 

@@ -35,6 +35,8 @@ _GLYPH_MAP = {
     "/uni211D": "\\mathbb{R}",
     "/uni2205": "\\emptyset",
     "/uni2206": "\\Delta",
+    "/uni2207": "\\nabla",
+    "/uni2202": "\\partial",
     "/uni2209": "\\notin",
     "/uni220A": "\\in",
     "/uni2218": "\\circ",
@@ -42,9 +44,14 @@ _GLYPH_MAP = {
     "/uni2220A": "\\angle",
     "/uni2223": "|",
     "/uni222A": "\\cup",
+    "/uni222B": "\\int",
+    "/uni222C": "\\iint",
+    "/uni222D": "\\iiint",
     "/uni223C": "\\sim",
     "/uni27E8": "\\langle",
     "/uni27E9": "\\rangle",
+    "/uni2A0F": "\\oint",
+    "/uni00D7": "\\times",
 }
 
 
