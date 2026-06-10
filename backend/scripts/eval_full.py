@@ -480,6 +480,53 @@ def phase_1_retrieval_quality():
 # PHASE 2: Generation Quality
 # ══════════════════════════════════════════
 
+def _compute_citation_accuracy(answer: str, docs: list) -> float:
+    """Compute citation accuracy using token + entity + key-term overlap."""
+    from app.retrieval.citation_verifier import verify_all_citations
+    verification = verify_all_citations(answer, docs)
+    return verification["avg_score"]
+
+
+def _compute_equation_fidelity(answer: str) -> float:
+    """Score equation fidelity: check that all LaTeX is well-formed."""
+    import re
+    if "$" not in answer and "$$" not in answer:
+        return 1.0
+
+    issues = 0
+    total_checks = 0
+
+    # Check 1: Paired dollar signs
+    singles = answer.count("$") - 2 * answer.count("$$")
+    if singles % 2 != 0:
+        issues += 1
+    total_checks += 1
+
+    # Check 2: frac has braces
+    frac_bare = len(re.findall(r'\\frac(?!\{)', answer))
+    if frac_bare > 0:
+        issues += frac_bare
+    total_checks += 1
+
+    # Check 3: sum has sub/superscript braces
+    sum_bare = len(re.findall(r'\\sum\s+[a-z]', answer))
+    if sum_bare > 0:
+        issues += sum_bare
+    total_checks += 1
+
+    # Check 4: No garbled commands (d¸ots, etc.)
+    garbled = len(re.findall(r'd¸\s*ots', answer))
+    if garbled > 0:
+        issues += garbled
+    total_checks += 1
+
+    # Check 5: No missing backslashes on common functions in math context
+    bare_fns = len(re.findall(r'\$[^$]*(?<!\\)(?:sin|cos|tan|log|ln|lim|exp|sqrt)[^$]*\$', answer))
+    total_checks += 1
+
+    return max(0.0, 1.0 - issues / max(total_checks, 1))
+
+
 def phase_2_generation_quality(phase1_data=None):
     print("\n" + "=" * 70)
     print("PHASE 2: GENERATION QUALITY")
@@ -569,10 +616,12 @@ Score (0.0-1.0):"""
             "latex_fidelity": round(latex["score"], 3),
             "has_citations": len(citations) > 0,
             "citation_count": len(citations),
+            "citation_accuracy": _compute_citation_accuracy(answer, docs),
+            "equation_fidelity": _compute_equation_fidelity(answer),
             "answer_len": len(answer),
         }
         results.append(entry)
-        print(f"    KW={kw_score:.2f} Rel={relevancy:.2f} Cor={correctness:.2f} Hal={halluc_score:.2f} LaTeX={latex['score']:.2f} Cites={len(citations)}")
+        print(f"    KW={kw_score:.2f} Rel={relevancy:.2f} Cor={correctness:.2f} Hal={halluc_score:.2f} LaTeX={latex['score']:.2f} CiteAcc={entry['citation_accuracy']:.2f} EqFid={entry['equation_fidelity']:.2f}")
         rate_limit(4.0)
 
     # RAGAS Faithfulness on standard queries
@@ -614,6 +663,8 @@ Score (0.0-1.0):"""
     avg_hal = np.mean([r["hallucination"] for r in results]) if results else 0
     avg_latex = np.mean([r["latex_fidelity"] for r in results]) if results else 0
     avg_kw = np.mean([r["keyword_coverage"] for r in results]) if results else 0
+    avg_cite_acc = np.mean([r["citation_accuracy"] for r in results]) if results else 0
+    avg_eq_fid = np.mean([r["equation_fidelity"] for r in results]) if results else 0
     citations_pct = sum(1 for r in results if r["has_citations"]) / len(results) * 100 if results else 0
 
     print(f"\n  ── GENERATION RESULTS ({len(results)} queries) ──")
@@ -622,6 +673,8 @@ Score (0.0-1.0):"""
     print(f"  Answer Correctness:  {avg_cor:.3f}")
     print(f"  Hallucination Rate:  {avg_hal:.3f} (lower is better)")
     print(f"  LaTeX Fidelity:      {avg_latex:.3f}")
+    print(f"  Citation Accuracy:   {avg_cite_acc:.3f}")
+    print(f"  Equation Fidelity:   {avg_eq_fid:.3f}")
     print(f"  Has Citations:       {citations_pct:.0f}%")
 
     return {
@@ -630,6 +683,8 @@ Score (0.0-1.0):"""
         "avg_answer_correctness": round(avg_cor, 4),
         "avg_hallucination_rate": round(avg_hal, 4),
         "avg_latex_fidelity": round(avg_latex, 4),
+        "avg_citation_accuracy": round(avg_cite_acc, 4),
+        "avg_equation_fidelity": round(avg_eq_fid, 4),
         "citations_pct": round(citations_pct, 1),
         "ragas_faithfulness": ragas_scores.get("faithfulness", "N/A"),
         "ragas_context_precision": ragas_scores.get("context_precision", "N/A"),

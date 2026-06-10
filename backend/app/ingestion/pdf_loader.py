@@ -56,6 +56,8 @@ def convert_pdf_to_markdown(pdf_path: str, output_dir: str) -> str:
 
 
 def parse_marker_markdown(md_path: str) -> list[Document]:
+    from app.ingestion.pdf_structure import classify_page
+
     md_path = Path(md_path)
     text = md_path.read_text(encoding="utf-8")
 
@@ -67,19 +69,21 @@ def parse_marker_markdown(md_path: str) -> list[Document]:
         page_num = int(parts[i].strip())
         content = parts[i + 1].strip()
         if content:
+            section = classify_page(page_num)
             docs.append(Document(
                 page_content=content,
                 metadata={
                     "page": page_num,
                     "source": str(md_path.name),
                     "file_path": str(md_path),
+                    "section": section,
                 }
             ))
 
     if not docs:
         docs.append(Document(
             page_content=text,
-            metadata={"source": str(md_path.name), "file_path": str(md_path)}
+            metadata={"source": str(md_path.name), "file_path": str(md_path), "section": "unknown"}
         ))
 
     return docs

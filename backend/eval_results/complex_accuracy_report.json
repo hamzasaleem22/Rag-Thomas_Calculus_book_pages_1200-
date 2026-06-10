@@ -1,0 +1,94 @@
+{
+  "before": {
+    "label": "BEFORE (no NLI, no SC)",
+    "claim_accuracy": 0.4375,
+    "hallucination_rate": 0.0,
+    "average_confidence": 0.3,
+    "latex_fidelity": 0.75,
+    "total_claims": 11,
+    "per_query": [
+      {
+        "claim_count": 4,
+        "claim_accuracy": 0.75,
+        "hallucination_rate": 0.0,
+        "average_confidence": 0.3,
+        "latex": 0.5,
+        "id": "ch02",
+        "answer_len": 395
+      },
+      {
+        "claim_count": 1,
+        "claim_accuracy": 0.0,
+        "hallucination_rate": 0.0,
+        "average_confidence": 0.3,
+        "latex": 1.0,
+        "id": "ch06",
+        "answer_len": 72
+      },
+      {
+        "claim_count": 3,
+        "claim_accuracy": 0.6666666666666666,
+        "hallucination_rate": 0.0,
+        "average_confidence": 0.3,
+        "latex": 0.5,
+        "id": "ch12",
+        "answer_len": 308
+      },
+      {
+        "claim_count": 3,
+        "claim_accuracy": 0.3333333333333333,
+        "hallucination_rate": 0.0,
+        "average_confidence": 0.3,
+        "latex": 1.0,
+        "id": "ch16",
+        "answer_len": 403
+      }
+    ]
+  },
+  "after": {
+    "label": "AFTER (NLI + SC enabled)",
+    "claim_accuracy": 1.0,
+    "hallucination_rate": 0.0,
+    "average_confidence": 0.4925,
+    "latex_fidelity": 0.875,
+    "total_claims": 15,
+    "per_query": [
+      {
+        "claim_count": 6,
+        "claim_accuracy": 1.0,
+        "hallucination_rate": 0.0,
+        "average_confidence": 0.49366666666666664,
+        "latex": 1.0,
+        "id": "ch02",
+        "answer_len": 218
+      },
+      {
+        "claim_count": 5,
+        "claim_accuracy": 1.0,
+        "hallucination_rate": 0.0,
+        "average_confidence": 0.5538000000000001,
+        "latex": 1.0,
+        "id": "ch06",
+        "answer_len": 276
+      },
+      {
+        "claim_count": 3,
+        "claim_accuracy": 1.0,
+        "hallucination_rate": 0.0,
+        "average_confidence": 0.5666666666666667,
+        "latex": 0.5,
+        "id": "ch12",
+        "answer_len": 214
+      },
+      {
+        "claim_count": 1,
+        "claim_accuracy": 1.0,
+        "hallucination_rate": 0.0,
+        "average_confidence": 0.356,
+        "latex": 1.0,
+        "id": "ch16",
+        "answer_len": 194
+      }
+    ]
+  }
+}

@@ -192,3 +192,77 @@ def test_chunk_no_tiny():
     chunks = chunk_documents(docs)
     for c in chunks:
         assert len(c.page_content.strip()) >= 50
+
+
+def test_answer_key_classification():
+    from app.ingestion.chunker import _classify_content_type, _chunk_answer_key
+    from app.ingestion.pdf_structure import classify_page
+
+    assert classify_page(1100) == "answer_key"
+    assert classify_page(1262) == "answer_key"
+    assert classify_page(1099) != "answer_key"
+
+    ak_chunks = _chunk_answer_key(
+        "1. y = x^2 + 2x + 1\n   Solution: Complete the square: y = (x + 1)^2\n2. z = 3x + 4y\n   Solution: This is a linear equation in two variables.",
+        {"page": 1100, "section": "answer_key"},
+    )
+    assert len(ak_chunks) > 0
+    for c in ak_chunks:
+        assert len(c.page_content.strip()) >= 50
+
+
+def test_content_type_classification():
+    from app.ingestion.chunker import _classify_content_type, _get_chunk_size_for_content
+
+    assert _classify_content_type("THEOREM 5 The Mean Value Theorem\nIf f is...") == "theorem"
+    assert _classify_content_type("DEFINITION Continuous function\nA function f is...") == "definition"
+    assert _classify_content_type("EXAMPLE 3 Find the derivative\nCompute...") == "example"
+    assert _classify_content_type("$$ \\int_a^b f(x) dx $$ is the definite integral") == "equation_heavy"
+    assert _classify_content_type("This is a normal prose paragraph.") == "prose"
+
+    assert _get_chunk_size_for_content("equation_heavy") == 512
+    assert _get_chunk_size_for_content("theorem") == 768
+    assert _get_chunk_size_for_content("prose") == 1000
+    assert _get_chunk_size_for_content("answer_key") == 1024
+
+
+def test_chapter_detection_avoids_answer_key():
+    from app.ingestion.chunker import ANSWER_KEY_EXCLUDE, CHAPTER_PAGE_PATTERN
+    garbled = "7 33. y = c1 + c2ex"
+    assert ANSWER_KEY_EXCLUDE.match(garbled), "Answer key line should be excluded"
+    assert not CHAPTER_PAGE_PATTERN.match(garbled), "Answer key line should not match chapter pattern"
+
+    valid_chapter = "22   Chapter 1 Functions"
+    m = CHAPTER_PAGE_PATTERN.match(valid_chapter)
+    assert m is not None
+    assert int(m.group(1)) == 1
+
+
+def test_book_page_offset():
+    from app.ingestion.pdf_structure import get_book_page
+    assert get_book_page(22) == 1
+    assert get_book_page(23) == 2
+    assert get_book_page(1) == 1
+    assert get_book_page(21) == 21
+    assert get_book_page(1053) == 1032
+
+
+def test_embedding_model():
+    from app.retrieval.embeddings import HFInferenceAPIEmbeddings
+
+    embedder = HFInferenceAPIEmbeddings()
+    assert "bge" in embedder.model_name.lower()
+
+    dim = embedder.model.get_embedding_dimension()
+    assert dim == 384, f"Expected 384-dim, got {dim}"
+
+    query_vec = embedder.embed_query("derivative of sin")
+    assert len(query_vec) == 384
+    assert all(isinstance(v, float) for v in query_vec[:5])
+
+    doc_vecs = embedder.embed_documents(["The derivative of sin(x) is cos(x)."])
+    assert len(doc_vecs) == 1
+    assert len(doc_vecs[0]) == 384
+
+    query_no_prefix = embedder.embed_query("derivative of sin")
+    assert len(query_no_prefix) == 384

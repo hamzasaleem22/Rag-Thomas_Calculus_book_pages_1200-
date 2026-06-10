@@ -1,6 +1,7 @@
 import re
 
 from langchain_core.documents import Document
+from app.retrieval.math_cleaner import clean_chunk as math_clean_chunk
 
 
 POUND_SIGN = re.compile(r"#")
@@ -104,6 +105,7 @@ def clean_document(doc: Document) -> Document:
     text = remove_garbled_lines(text)
     text = normalize_latex(text)
     text = fix_unicode_artifacts(text)
+    text = math_clean_chunk(text)
     text = clean_text(text)
     doc.page_content = text
     return doc

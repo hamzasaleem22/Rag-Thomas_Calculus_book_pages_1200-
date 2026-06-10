@@ -8,18 +8,22 @@ RAG pipeline for "Thomas' Calculus Early Transcendentals, 14th Edition" (1262-pa
 ### Backend
 | File | Purpose |
 |------|---------|
-| `backend/app/config.py` | Settings (env: HF_TOKEN_1, HF_TOKEN_2, OPENAI_API_KEY) |
+| `backend/app/config.py` | Settings (env: HF_TOKEN_1, HF_TOKEN_2, OPENAI_API_KEY). New: `response_cache_enabled`, `compression_skip_threshold` |
 | `backend/app/retrieval/embeddings.py` | `HFInferenceAPIEmbeddings` — local sentence-transformers (all-MiniLM-L6-v2) |
-| `backend/app/retrieval/vector_store.py` | `BM25SparseEmbeddings` + `HybridVectorStore` (Qdrant wrapper) |
-| `backend/app/retrieval/reranker.py` | Reranker with `cross-encoder/ms-marco-MiniLM-L-6-v2` (local transformers) |
-| `backend/app/retrieval/math_cleaner.py` | **NEW** — Cleans garbled PDF math in chunks before sending to LLM (fixes /uniXXXX, spaced functions, ƒ→f, S→→) |
-| `backend/app/retrieval/latex_sanitizer.py` | **NEW** — Post-processes LLM output to fix malformed LaTeX (\fracf→\frac{f}, missing $...$, d¸ots→\dots) |
-| `backend/app/generation/generator.py` | **UPDATED** — System prompt enforces ChatGPT-style concise LaTeX with proper \frac{}{} braces. Integrates math_cleaner + latex_sanitizer |
-| `backend/app/ingestion/chunker.py` | **OPTIMIZED** — 1024-token chunks with 128 overlap, theorem boundary detection |
-| `backend/app/ingestion/cleaner.py` | **OPTIMIZED** — Unicode math fixes, LaTeX normalization, footer removal |
+| `backend/app/retrieval/vector_store.py` | `BM25SparseEmbeddings` + `HybridVectorStore` (Qdrant wrapper with chapter filtering) |
+| `backend/app/retrieval/reranker.py` | Multiple methods: token_overlap, bm25, cross_encoder, hybrid. Default disabled. |
+| `backend/app/retrieval/citation_verifier.py` | **NEW** — Multi-metric citation verification (token overlap, entity overlap, key terms) |
+| `backend/app/retrieval/expansion.py` | Query expansion + `detect_query_type()` + `detect_chapter_reference()` |
+| `backend/app/retrieval/math_cleaner.py` | Cleans garbled PDF math. Now runs at ingestion time, not per-query. |
+| `backend/app/retrieval/latex_sanitizer.py` | Post-processes LLM output to fix malformed LaTeX |
+| `backend/app/generation/generator.py` | Response caching (LRU 100), multi-metric citation verification, graceful degradation |
+| `backend/app/ingestion/chunker.py` | **ENHANCED** — Content-type-aware chunking, min/max enforcement (100-3000 chars), LaTeX boundary detection |
+| `backend/app/ingestion/cleaner.py` | Unicode fixes + LaTeX normalization + math cleaning (ingestion-time) |
+| `backend/app/ingestion/pdf_structure.py` | **NEW** — Page range detection, section classification, TOC extraction |
+| `backend/app/ingestion/metadata_enricher.py` | **NEW** — Chunk metadata enrichment (equation_density, key_terms, etc.) |
 | `backend/app/ingestion/indexer.py` | Batch embed + PointStruct upsert to Qdrant (persistent mode) |
-| `backend/app/api/endpoints.py` | FastAPI: `/query`, `/query/stream` (SSE), `/ingest`, `/health` |
-| `backend/app/api/schemas.py` | Pydantic models |
+| `backend/app/api/endpoints.py` | FastAPI: `/query`, `/query/stream` (SSE), `/ingest`, `/health`. Adaptive relevance gate. |
+| `backend/app/api/schemas.py` | Pydantic models. Citation now includes `chunk_id` and `confidence_score` |
 | `backend/run_api.py` | Uvicorn entry point |
 
 ### Frontend (29 source files)
@@ -71,8 +75,9 @@ RAG pipeline for "Thomas' Calculus Early Transcendentals, 14th Edition" (1262-pa
 - **Legacy LLM**: `cx/gpt-5.5`
 - **Embedding**: `all-MiniLM-L6-v2` (384-dim) — local sentence-transformers
 - **Sparse**: Custom BM25 (persistent state in `/tmp/qdrant_calculus_bm25.pkl`)
-- **Reranker**: `cross-encoder/ms-marco-MiniLM-L-6-v2` — local transformers with MMR diversity
-- **Rate limiting**: 10-second delay between LLM requests
+- **Reranker**: Multiple methods available (token_overlap, bm25, cross_encoder, hybrid). **Default disabled** (`use_reranker=False`) due to negative quality gain.
+- **Rate limiting**: 3-second delay between LLM requests (reduced from 10s for production optimization)
+- **Response caching**: LRU cache (100 entries) for identical queries
 
 ## Frontend Architecture
 - **Framework**: React 19 + TypeScript + Vite 8 + Tailwind CSS v4
@@ -85,7 +90,9 @@ RAG pipeline for "Thomas' Calculus Early Transcendentals, 14th Edition" (1262-pa
 
 ## Math Rendering Pipeline (Critical)
 ```
-PDF chunks (garbled) → math_cleaner.py → clean chunks → LLM context
+PDF chunks (garbled) → math_cleaner.py (INGESTION TIME) → clean chunks stored
+    ↓
+Query → retrieve clean chunks → LLM context
     ↓
 LLM generates answer (with $...$ LaTeX) → latex_sanitizer.py (backend)
     ↓
@@ -149,3 +156,36 @@ cd frontend && npm run dev
 - Some complex LaTeX (nested fractions, multi-line equations) may still fail KaTeX rendering if the LLM produces malformed output despite the sanitizer
 - The `normalizeMathText()` function in answerParser.ts can be overly aggressive — the `wrapOrphanedLatex()` may wrap prose lines that happen to contain LaTeX commands
 - PDF source chunks have severe math garbling — a better PDF extractor (Nougat, Mathpix) would fundamentally improve output quality
+
+### Session: Deep-Dive RAG Audit & Optimization (2026-06-10)
+
+**10-Phase comprehensive pipeline audit and optimization. All phases completed.**
+
+**New Files (4):**
+- `backend/app/ingestion/pdf_structure.py` — Page range detection, section classification (front_matter/TOC/preface/chapter_content)
+- `backend/app/ingestion/metadata_enricher.py` — Chunk metadata enrichment (equation_density, key_terms, chapter_number, etc.)
+- `backend/app/retrieval/citation_verifier.py` — Multi-metric citation verification (token overlap + entity overlap + key terms)
+- `backend/scripts/evaluate_chunks.py` — Standalone chunk quality evaluation script
+
+**Key Changes:**
+
+1. **Chunking (Phase 2)** — Content-type-aware chunking (prose/theorem/definition/example/equation/table) with adaptive chunk sizes, min/max enforcement (100-3000 chars), enhanced LaTeX boundary detection
+2. **Metadata (Phase 3)** — Every chunk now has: `equation_density`, `has_formula`, `key_terms`, `chunk_size_tokens`, `section_number`, `chapter_number`, `content_type`
+3. **Retrieval (Phase 4)** — Query type detection (equation/theorem/definition/general), adaptive relevance thresholds (0.05/0.10/0.15), HyDE auto-activation for equations, chapter-filtered retrieval
+4. **Reranker (Phase 5)** — Multiple methods (token_overlap, bm25, cross_encoder, hybrid). Default disabled (`use_reranker=False`).
+5. **Citations (Phase 6)** — Multi-metric verification with confidence scores. Citation schema now includes `chunk_id` and `confidence_score`. Graceful degradation removes uncited claims.
+6. **Math (Phase 7)** — Math cleaning moved from runtime to ingestion time (runs once, not per-query). Reduced per-query latency.
+7. **Evaluation (Phase 8)** — Added `_compute_citation_accuracy()` and `_compute_equation_fidelity()` metrics to `eval_full.py`. Created `evaluate_chunks.py` for chunk quality assessment.
+8. **Production (Phase 9)** — Request delay reduced 10s→3s, response caching (LRU 100 entries), `compression_skip_threshold` config.
+
+**Pipeline Architecture (Updated):**
+```
+Query → [Query Type Detection] → [Expansion] → [HyDE (auto for equations)]
+  → [Hybrid Search: Dense + BM25 + Chapter Filter]
+  → [Adaptive Relevance Gate: 0.05/0.10/0.15 by type]
+  → [Lightweight Reranker (opt)] → [Compression (opt, skip <2K)]
+  → [Response Cache Check] → [LLM Generation]
+  → [Multi-Metric Citation Verification] → [LaTeX Sanitizer] → Response
+```
+
+**All 16 pytest tests pass after all 10 phases.**
