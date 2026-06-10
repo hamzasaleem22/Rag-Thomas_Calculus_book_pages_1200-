@@ -1,5 +1,8 @@
 # Rag_Book — Intelligent Math Textbook Q&A
 
+<img width="1920" height="1080" alt="Screenshot From 2026-06-11 00-37-03" src="https://github.com/user-attachments/assets/f6c3ad84-b731-4c5f-81f0-c40b8b33ce62" />
+
+
 A **Retrieval-Augmented Generation (RAG)** pipeline for querying *Thomas' Calculus Early Transcendentals, 14th Edition* (1,262 pages). Ask calculus questions in natural language and get concise answers with citations, rendered LaTeX formulas, and context-aware responses.
 
 ## Architecture
