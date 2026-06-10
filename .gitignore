@@ -1,11 +1,35 @@
 .venv/
+__pycache__/
 backend/__pycache__/
 backend/**/__pycache__/
 backend/**/*.pyc
 backend/.env
-backend/data/markdown/
-backend/data/qdrant/
-*.egg-info/
+backend/data/
+backend/eval_results/
+backend/scripts/latex_quality_report.json
 dist/
 node_modules/
 frontend/dist/
+frontend/README.md
+
+# Plan & docs files (not part of the project)
+plan/
+docs/
+*.plan*
+
+# Markdown files to exclude (except root README.md)
+AGENTS.md
+UI-Plan.md
+opencode.md
+backend/OPTIMIZATION_PLAN.md
+
+# Dev helper scripts (not needed in repo)
+backend/start_server.py
+frontend/README.md
+
+# Textbook PDF (too large for repo)
+Thomas*Calculus*.pdf
+
+# OS files
+.DS_Store
+Thumbs.db
