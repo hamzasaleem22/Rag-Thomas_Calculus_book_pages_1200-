@@ -40,6 +40,8 @@ class HFInferenceAPIEmbeddings(Embeddings):
         return embeddings
 
     def embed_query(self, text: str) -> list[float]:
+        if "bge" in self.model_name:
+            text = "Represent this sentence for searching relevant passages: " + text
         embedding = self.model.encode(
             text, normalize_embeddings=True, show_progress_bar=False
         )

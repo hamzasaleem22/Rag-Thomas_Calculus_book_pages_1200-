@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "GraphRAG pipeline for Thomas' Calculus Early Transcendentals, 14th Edition"
 requires-python = ">=3.11"
 dependencies = [
+    "pytest>=8.0",
     "langchain>=0.3",
     "langchain-community>=0.3",
     "langchain-qdrant>=0.2",

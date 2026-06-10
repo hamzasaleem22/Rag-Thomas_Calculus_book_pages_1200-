@@ -1,7 +1,9 @@
 """Unit tests for chunking, cleaning, BM25, and reranking."""
-import json, sys, pickle, re
+import json
+import tempfile
+import pickle
+import pytest
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from langchain_core.documents import Document
 from app.ingestion.cleaner import (
@@ -14,7 +16,6 @@ from app.ingestion.chunker import (
 )
 from app.retrieval.vector_store import BM25SparseEmbeddings
 from app.retrieval.expansion import expand_query, expand_query_text
-from app.config import settings
 
 
 def test_clean_text():
@@ -80,12 +81,12 @@ def test_inject_markdown_headers():
 
 
 def test_has_unmatched_latex():
-    assert _has_unmatched_latex("x^2") == False
-    assert _has_unmatched_latex("$x$") == False
-    assert _has_unmatched_latex("$$x^2$$") == False
-    assert _has_unmatched_latex("$x$ and $y$") == False
-    assert _has_unmatched_latex("$x") == True
-    assert _has_unmatched_latex("$$x^2") == True
+    assert not _has_unmatched_latex("x^2")
+    assert not _has_unmatched_latex("$x$")
+    assert not _has_unmatched_latex("$$x^2$$")
+    assert not _has_unmatched_latex("$x$ and $y$")
+    assert _has_unmatched_latex("$x")
+    assert _has_unmatched_latex("$$x^2")
 
 
 def test_fix_broken_latex():
@@ -129,7 +130,7 @@ def test_bm25_sparse_embeddings():
     ]
     sparse_vectors = bm25.embed_documents(texts)
     assert len(sparse_vectors) == 3
-    assert bm25.fitted == True
+    assert bm25.fitted
     assert len(bm25.vocab) > 0
     assert bm25.num_docs == 3
 
@@ -139,7 +140,6 @@ def test_bm25_sparse_embeddings():
 
 
 def test_bm25_from_pickle():
-    import tempfile, pickle
     bm25 = BM25SparseEmbeddings()
     bm25.embed_documents(["test document with math content derivative integral"])
     state = {
@@ -153,7 +153,7 @@ def test_bm25_from_pickle():
         tmp_path = f.name
 
     loaded = BM25SparseEmbeddings.from_pickle(tmp_path)
-    assert loaded.fitted == True
+    assert loaded.fitted
     assert len(loaded.vocab) > 0
 
     q = loaded.embed_query("derivative")
@@ -194,38 +194,75 @@ def test_chunk_no_tiny():
         assert len(c.page_content.strip()) >= 50
 
 
-if __name__ == "__main__":
-    tests = [
-        ("test_clean_text", test_clean_text),
-        ("test_normalize_latex", test_normalize_latex),
-        ("test_fix_unicode_artifacts", test_fix_unicode_artifacts),
-        ("test_remove_footers", test_remove_footers),
-        ("test_remove_garbled_lines", test_remove_garbled_lines),
-        ("test_clean_document", test_clean_document),
-        ("test_inject_markdown_headers", test_inject_markdown_headers),
-        ("test_has_unmatched_latex", test_has_unmatched_latex),
-        ("test_fix_broken_latex", test_fix_broken_latex),
-        ("test_enforce_theorem_boundary", test_enforce_theorem_boundary),
-        ("test_chunk_documents", test_chunk_documents),
-        ("test_bm25_sparse_embeddings", test_bm25_sparse_embeddings),
-        ("test_bm25_from_pickle", test_bm25_from_pickle),
-        ("test_query_expansion", test_query_expansion),
-        ("test_normalize_latex_consistency", test_normalize_latex_consistency),
-        ("test_chunk_no_tiny", test_chunk_no_tiny),
-    ]
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        try:
-            fn()
-            print(f"  ✅ {name}")
-            passed += 1
-        except Exception as e:
-            print(f"  ❌ {name}: {e}")
-            failed += 1
-    print(f"\n{'='*40}")
-    print(f"Passed: {passed}/{len(tests)}")
-    if failed:
-        print(f"Failed: {failed}")
-    else:
-        print("All tests passed! ✅")
+def test_answer_key_classification():
+    from app.ingestion.chunker import _classify_content_type, _chunk_answer_key
+    from app.ingestion.pdf_structure import classify_page
+
+    assert classify_page(1100) == "answer_key"
+    assert classify_page(1262) == "answer_key"
+    assert classify_page(1099) != "answer_key"
+
+    ak_chunks = _chunk_answer_key(
+        "1. y = x^2 + 2x + 1\n   Solution: Complete the square: y = (x + 1)^2\n2. z = 3x + 4y\n   Solution: This is a linear equation in two variables.",
+        {"page": 1100, "section": "answer_key"},
+    )
+    assert len(ak_chunks) > 0
+    for c in ak_chunks:
+        assert len(c.page_content.strip()) >= 50
+
+
+def test_content_type_classification():
+    from app.ingestion.chunker import _classify_content_type, _get_chunk_size_for_content
+
+    assert _classify_content_type("THEOREM 5 The Mean Value Theorem\nIf f is...") == "theorem"
+    assert _classify_content_type("DEFINITION Continuous function\nA function f is...") == "definition"
+    assert _classify_content_type("EXAMPLE 3 Find the derivative\nCompute...") == "example"
+    assert _classify_content_type("$$ \\int_a^b f(x) dx $$ is the definite integral") == "equation_heavy"
+    assert _classify_content_type("This is a normal prose paragraph.") == "prose"
+
+    assert _get_chunk_size_for_content("equation_heavy") == 512
+    assert _get_chunk_size_for_content("theorem") == 768
+    assert _get_chunk_size_for_content("prose") == 1000
+    assert _get_chunk_size_for_content("answer_key") == 1024
+
+
+def test_chapter_detection_avoids_answer_key():
+    from app.ingestion.chunker import ANSWER_KEY_EXCLUDE, CHAPTER_PAGE_PATTERN
+    garbled = "7 33. y = c1 + c2ex"
+    assert ANSWER_KEY_EXCLUDE.match(garbled), "Answer key line should be excluded"
+    assert not CHAPTER_PAGE_PATTERN.match(garbled), "Answer key line should not match chapter pattern"
+
+    valid_chapter = "22   Chapter 1 Functions"
+    m = CHAPTER_PAGE_PATTERN.match(valid_chapter)
+    assert m is not None
+    assert int(m.group(1)) == 1
+
+
+def test_book_page_offset():
+    from app.ingestion.pdf_structure import get_book_page
+    assert get_book_page(22) == 1
+    assert get_book_page(23) == 2
+    assert get_book_page(1) == 1
+    assert get_book_page(21) == 21
+    assert get_book_page(1053) == 1032
+
+
+def test_embedding_model():
+    from app.retrieval.embeddings import HFInferenceAPIEmbeddings
+
+    embedder = HFInferenceAPIEmbeddings()
+    assert "bge" in embedder.model_name.lower()
+
+    dim = embedder.model.get_embedding_dimension()
+    assert dim == 384, f"Expected 384-dim, got {dim}"
+
+    query_vec = embedder.embed_query("derivative of sin")
+    assert len(query_vec) == 384
+    assert all(isinstance(v, float) for v in query_vec[:5])
+
+    doc_vecs = embedder.embed_documents(["The derivative of sin(x) is cos(x)."])
+    assert len(doc_vecs) == 1
+    assert len(doc_vecs[0]) == 384
+
+    query_no_prefix = embedder.embed_query("derivative of sin")
+    assert len(query_no_prefix) == 384

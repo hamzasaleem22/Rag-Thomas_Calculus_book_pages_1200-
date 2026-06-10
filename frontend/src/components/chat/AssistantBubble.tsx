@@ -1,10 +1,10 @@
+import type { ReactNode } from "react";
 import type { Message } from "../../types";
 import GlassCard from "../ui/GlassCard";
-import AnswerSummary from "../widgets/AnswerSummary";
-import KeyPointsList from "../widgets/KeyPointsList";
-import FormulaBox from "../widgets/FormulaBox";
+import DynamicSection from "../widgets/DynamicSection";
 import SourcesWidget from "../widgets/SourcesWidget";
 import { parseAnswer } from "../../utils/answerParser";
+import RichTextRenderer from "../widgets/RichTextRenderer";
 
 interface AssistantBubbleProps {
   message: Message;
@@ -23,43 +23,47 @@ export default function AssistantBubble({ message, isStreaming = false }: Assist
   });
 
   const citations = message.citations ?? [];
-  const parsed = !isStreaming ? parseAnswer(message.content) : null;
-  const hasWidgets = parsed && (parsed.summary || parsed.keyPoints.length > 0 || parsed.formulas.length > 0);
+  const parsed = parseAnswer(message.content);
+
+  let contentNode: ReactNode;
+
+  if (parsed.sections.length > 0) {
+    // ── Dynamic sections with KaTeX rendering ──
+    contentNode = (
+      <div className="space-y-3 stagger-children">
+        {parsed.sections.map((section, i) => (
+          <DynamicSection
+            key={i}
+            header={section.header}
+            content={section.content}
+            citations={citations}
+            index={i}
+          />
+        ))}
+      </div>
+    );
+  } else {
+    // ── Fallback: rich text with math rendering ──
+    contentNode = (
+      <RichTextRenderer text={message.content} citations={citations} />
+    );
+  }
 
   return (
     <div className="flex justify-start animate-slide-left">
       <div className="max-w-[85%] w-full">
         {/* Header: bot avatar + label */}
         <div className="flex items-center gap-2 mb-1.5">
-          <span className="gradient-text text-base font-bold">&#9670;</span>
-          <span className="text-xs font-semibold text-slate-500">Assistant</span>
+          <span className="text-cyan-500 text-base font-bold">&#9670;</span>
+          <span className="text-xs font-semibold text-slate-600">Assistant</span>
         </div>
 
         <GlassCard className="p-4 shadow-md">
-          {isStreaming ? (
-            /* ── Streaming text with blinking cursor ── */
-            <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
-              {message.content}
-              <span className="animate-blink text-blue-500 font-bold ml-0.5">|</span>
-            </p>
-          ) : hasWidgets ? (
-            /* ── Structured widgets with citations passed down ── */
-            <div className="space-y-3 stagger-children">
-              {parsed!.summary && (
-                <AnswerSummary content={parsed!.summary} citations={citations} />
-              )}
-              {parsed!.keyPoints.length > 0 && (
-                <KeyPointsList points={parsed!.keyPoints} citations={citations} />
-              )}
-              {parsed!.formulas.length > 0 && (
-                <FormulaBox formulas={parsed!.formulas} />
-              )}
-            </div>
-          ) : (
-            /* ── Fallback: plain text ── */
-            <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
-              {message.content}
-            </p>
+          {contentNode}
+
+          {/* ── Streaming cursor ── */}
+          {isStreaming && (
+            <span className="animate-blink text-cyan-500 font-bold ml-0.5">|</span>
           )}
 
           {/* ── Sources section (shown after streaming completes) ── */}

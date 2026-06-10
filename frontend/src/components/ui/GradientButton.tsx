@@ -29,8 +29,9 @@ export default function GradientButton({
       onClick={onClick}
       disabled={disabled}
       className={`gradient-bg text-white font-medium rounded-xl
-        hover:shadow-lg hover:shadow-blue-500/25 hover:scale-[1.03]
-        disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:shadow-none
+        shadow-md shadow-blue-500/20
+        hover:shadow-lg hover:shadow-blue-500/30 hover:scale-[1.03]
+        disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:shadow-none disabled:shadow-none
         transition-all duration-200
         ${sizeClasses[size]}
         ${className}`}

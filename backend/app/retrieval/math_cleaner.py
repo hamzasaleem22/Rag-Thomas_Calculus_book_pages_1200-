@@ -2,6 +2,12 @@
 math_cleaner.py
 ───────────────
 Cleans garbled math from PDF-extracted chunks before sending to the LLM.
+See also: app/ingestion/cleaner.py (overlapping Unicode artifact cleanup).
+
+NOTE: This module runs on chunks BEFORE they reach the LLM. It must NOT
+replace LaTeX commands with Unicode (e.g. backslash-infty to ∞) because the LLM
+needs to see LaTeX to produce correct output. Such replacements are
+handled by app/retrieval/latex_sanitizer.py on the LLM output side.
 
 The source PDF was extracted with a lossy tool that produces:
   - /uniXXXX  Adobe glyph codes (e.g. /uni2206 = Δ)
@@ -29,6 +35,8 @@ _GLYPH_MAP = {
     "/uni211D": "\\mathbb{R}",
     "/uni2205": "\\emptyset",
     "/uni2206": "\\Delta",
+    "/uni2207": "\\nabla",
+    "/uni2202": "\\partial",
     "/uni2209": "\\notin",
     "/uni220A": "\\in",
     "/uni2218": "\\circ",
@@ -36,9 +44,14 @@ _GLYPH_MAP = {
     "/uni2220A": "\\angle",
     "/uni2223": "|",
     "/uni222A": "\\cup",
+    "/uni222B": "\\int",
+    "/uni222C": "\\iint",
+    "/uni222D": "\\iiint",
     "/uni223C": "\\sim",
     "/uni27E8": "\\langle",
     "/uni27E9": "\\rangle",
+    "/uni2A0F": "\\oint",
+    "/uni00D7": "\\times",
 }
 
 
@@ -117,18 +130,11 @@ def clean_chunk(text: str) -> str:
     result = re.sub(r"\b2p\b", "2π", result)
     result = re.sub(r"\b3p\b", "3π", result)
 
-    # ── 8. Fix bare LaTeX commands without delimiters ──────────────────
-    # \infty, \le, \ge, \ne appearing in plain text
-    result = result.replace("\\infty", "∞")
-    result = result.replace("\\le", "≤")
-    result = result.replace("\\ge", "≥")
-    result = result.replace("\\ne", "≠")
-
-    # ── 9. Fix "Ú" used as ≥ and "…" used as ≤ ────────────────────────
+    # ── 8. Fix "Ú" used as ≥ and "…" used as ≤ ────────────────────────
     result = result.replace(" Ú ", " ≥ ")
     result = result.replace(" … ", " ≤ ")
 
-    # ── 10. Clean up extra whitespace ───────────────────────────────────
+    # ── 9. Clean up extra whitespace ───────────────────────────────────
     # Collapse multiple spaces (but preserve newlines)
     result = re.sub(r"[^\S\n]+", " ", result)
     # Remove trailing spaces on each line

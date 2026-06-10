@@ -138,12 +138,46 @@ class HybridVectorStore:
         self.sparse_embedding.embed_documents(texts)
         return self.store.add_documents(documents)
 
-    def similarity_search(self, query: str, k: int = 0, **kwargs) -> list[Document]:
+    def similarity_search(self, query: str, k: int = 0, chapter_filter: Optional[list[int]] = None, **kwargs) -> list[Document]:
         k = k or settings.top_k_retrieve
+        if chapter_filter:
+            from qdrant_client.models import Filter, FieldCondition, MatchAny
+            from langchain_qdrant import RetrievalMode
+
+            original_mode = self.store.retrieval_mode
+            self.store.retrieval_mode = RetrievalMode.HYBRID
+
+            qdrant_filter = Filter(
+                must=[
+                    FieldCondition(
+                        key="metadata.chapter_number",
+                        match=MatchAny(any=chapter_filter),
+                    )
+                ]
+            )
+            results = self.store.similarity_search(
+                query=query, k=k, filter=qdrant_filter, **kwargs
+            )
+            self.store.retrieval_mode = original_mode
+            return results
         return self.store.similarity_search(query=query, k=k, **kwargs)
 
     def similarity_search_with_relevance_scores(
-        self, query: str, k: int = 0, **kwargs
+        self, query: str, k: int = 0, chapter_filter: Optional[list[int]] = None, **kwargs
     ) -> list[tuple[Document, float]]:
         k = k or settings.top_k_retrieve
+        if chapter_filter:
+            from qdrant_client.models import Filter, FieldCondition, MatchAny
+
+            qdrant_filter = Filter(
+                must=[
+                    FieldCondition(
+                        key="metadata.chapter_number",
+                        match=MatchAny(any=chapter_filter),
+                    )
+                ]
+            )
+            return self.store.similarity_search_with_relevance_scores(
+                query=query, k=k, filter=qdrant_filter, **kwargs
+            )
         return self.store.similarity_search_with_relevance_scores(query=query, k=k, **kwargs)

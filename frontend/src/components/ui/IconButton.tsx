@@ -6,12 +6,13 @@ interface IconButtonProps {
   disabled?: boolean;
   tooltip?: string;
   className?: string;
-  variant?: "default" | "danger";
+  variant?: "default" | "danger" | "onDark";
 }
 
 const variantClasses: Record<NonNullable<IconButtonProps["variant"]>, string> = {
   default: "text-slate-500 hover:text-slate-700 hover:bg-slate-100",
   danger: "text-slate-500 hover:text-red-500 hover:bg-red-50",
+  onDark: "text-slate-400 hover:text-white hover:bg-white/10",
 };
 
 export default function IconButton({

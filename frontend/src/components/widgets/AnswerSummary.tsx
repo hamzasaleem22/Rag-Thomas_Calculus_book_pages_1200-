@@ -4,6 +4,7 @@ import { InlineMath, BlockMath } from "react-katex";
 import type { Citation } from "../../types";
 import { renderCitationText } from "./CitationPopup";
 import { sanitizeLatex } from "../../utils/latexSanitizer";
+import { MathErrorBoundary } from "../ui/MathErrorBoundary";
 
 interface AnswerSummaryProps {
   content: string;
@@ -30,7 +31,9 @@ function renderRichText(
       const latex = sanitizeLatex(part.slice(2, -2).trim());
       elements.push(
         <span key={`display-${i}`} className="block my-3 overflow-x-auto">
-          <BlockMath math={latex} />
+          <MathErrorBoundary latex={latex}>
+            <BlockMath math={latex} />
+          </MathErrorBoundary>
         </span>,
       );
     } else {
@@ -40,8 +43,11 @@ function renderRichText(
       inlineParts.forEach((segment, j) => {
         if (j % 2 === 1) {
           // Captured group — inline math
+          const latex = sanitizeLatex(segment.trim());
           elements.push(
-            <InlineMath key={`inline-${i}-${j}`} math={sanitizeLatex(segment.trim())} />,
+            <MathErrorBoundary key={`inline-${i}-${j}`} latex={latex}>
+              <InlineMath math={latex} />
+            </MathErrorBoundary>,
           );
         } else if (segment.length > 0) {
           // Step 3: Render plain text with interactive citation popups
