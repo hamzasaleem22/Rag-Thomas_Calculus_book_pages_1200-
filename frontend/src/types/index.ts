@@ -30,11 +30,18 @@ export interface ChatSession {
   updatedAt: number;
 }
 
+/** A single dynamic section from the parsed answer */
+export interface AnswerSection {
+  header: string;
+  content: string;
+}
+
 /** Parsed structure from the LLM answer text */
 export interface ParsedAnswer {
   summary: string;
   keyPoints: string[];
   formulas: string[];
+  sections: AnswerSection[];
   rawText: string;
 }
 

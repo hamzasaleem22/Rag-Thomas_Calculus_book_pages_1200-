@@ -273,6 +273,9 @@ body {
    KATEX OVERRIDES
    ────────────────────────────────────────────── */
 
+/* Note: Fraction bar fix is in katex-fix.css (loaded separately
+   after index.css to ensure it overrides Tailwind's border reset) */
+
 /* Display math blocks in answer text */
 .katex-display {
   margin: 0.5em 0 !important;

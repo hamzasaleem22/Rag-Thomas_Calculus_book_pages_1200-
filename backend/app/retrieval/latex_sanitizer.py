@@ -64,6 +64,7 @@ def sanitize_answer(text: str) -> str:
 
     result = text
 
+    result = _fix_double_backslash(result)
     result = _fix_garbled_commands(result)
     result = _fix_spacing_primitives(result)
     result = _fix_frac_multichar(result)
@@ -76,6 +77,7 @@ def sanitize_answer(text: str) -> str:
     result = _fix_superscript_braces(result)
     result = _fix_missing_backslash(result)
     result = _fix_missing_cdot(result)
+    result = _fix_bare_cmd_outside_math(result)
     result = _remove_unicode_duplicates(result)
     result = _fix_unpaired_dollars(result)
     result = _wrap_bare_latex(result)
@@ -247,8 +249,12 @@ def _fix_frac_multichar(text: str) -> str:
 
 
 def _fix_missing_cdot(text: str) -> str:
-    r"""Fix 'dot' used in place of \cdot in math contexts."""
+    r"""Fix 'dot' or Unicode ⋅/· used in place of \cdot in math contexts."""
     result = text
+    # Unicode ⋅ (U+22C5 DOT OPERATOR) → \cdot
+    result = result.replace('\u22C5', '\\cdot')
+    # Unicode · (U+00B7 MIDDLE DOT) → \cdot
+    result = result.replace('\u00B7', '\\cdot')
     # Between two math expressions (curly braces or parens): } dot { → } \cdot {
     result = re.sub(r'}([.\s]*)dot([\s]*){', r'}\\cdot{', result, flags=re.IGNORECASE)
     # After a closing brace before a new frac: }dot\frac → }\cdot\frac
@@ -318,11 +324,89 @@ def _fix_missing_backslash(text: str) -> str:
         prefix = match.group(1)
         name = match.group(2)
         if name in _MATH_FUNCTIONS:
+            if prefix.endswith('\\'):
+                return match.group(0)
             return prefix + '\\' + name
         return match.group(0)
 
     result = re.sub(r'(\$[^$]*?)\b(' + '|'.join(sorted(_MATH_FUNCTIONS, key=len, reverse=True)) + r')\b', _fix_math_fn, result)
     return result
+
+
+def _fix_double_backslash(text: str) -> str:
+    r"""Fix \\cdot, \\to, \\pi etc. -> \cdot, \to, \pi (single backslash).
+
+    The LLM sometimes doubles the backslash in display math: \\cdot.
+    KaTeX interprets \\ as a line break, breaking the formula.
+    """
+    result = text
+    result = re.sub(
+        r'\\\\(cdot|to|infty|pi|alpha|beta|gamma|delta|theta|lambda|mu|sigma|phi|psi|omega|nabla|partial|times|div|circ|dots|cdots|ldots|sqrt|frac|int|sum|prod|lim|sin|cos|tan|ln|log|exp|left|right|text|mathbf|mathrm|mathcal|mathbb|overrightarrow|rightarrow|Rightarrow|mapsto|implies|iff)',
+        r'\\\1',
+        result,
+    )
+    return result
+
+
+def _fix_bare_cmd_outside_math(text: str) -> str:
+    """Wrap bare LaTeX commands like \\to that appear outside $...$ delimiters.
+
+    The LLM sometimes outputs \\to in running text (not inside $...$):
+        "with respect \\to $x$"  ->  "with respect $\\to$ $x$"
+
+    This function tracks math mode ($ and $$) and wraps known math-only
+    commands when they appear outside it.
+    """
+    _BARE_CMDS = {
+        'to', 'cdot', 'pi', 'infty', 'alpha', 'beta', 'gamma', 'delta',
+        'theta', 'lambda', 'mu', 'sigma', 'phi', 'psi', 'omega',
+        'nabla', 'partial', 'times', 'div', 'circ', 'approx', 'equiv',
+        'sim', 'propto', 'le', 'ge', 'ne', 'pm', 'mp',
+    }
+    _BARE_PATTERN = re.compile(
+        r'\\(' + '|'.join(sorted(_BARE_CMDS, key=len, reverse=True)) + r')\b'
+    )
+
+    lines = text.split('\n')
+    result = []
+
+    for line in lines:
+        if '\\' not in line:
+            result.append(line)
+            continue
+
+        new_line = []
+        i = 0
+        in_math = False
+
+        while i < len(line):
+            ch = line[i]
+
+            # Toggle math mode for $$ and $
+            if line[i:i+2] == '$$':
+                in_math = not in_math
+                new_line.append('$$')
+                i += 2
+                continue
+            if ch == '$':
+                in_math = not in_math
+                new_line.append('$')
+                i += 1
+                continue
+
+            if not in_math and ch == '\\':
+                m = _BARE_PATTERN.match(line, i)
+                if m:
+                    new_line.append('$' + m.group(0) + '$')
+                    i += len(m.group(0))
+                    continue
+
+            new_line.append(ch)
+            i += 1
+
+        result.append(''.join(new_line))
+
+    return '\n'.join(result)
 
 
 def _remove_unicode_duplicates(text: str) -> str:

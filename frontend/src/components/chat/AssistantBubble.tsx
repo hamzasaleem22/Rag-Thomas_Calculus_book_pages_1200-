@@ -1,11 +1,10 @@
 import type { ReactNode } from "react";
 import type { Message } from "../../types";
 import GlassCard from "../ui/GlassCard";
-import AnswerSummary from "../widgets/AnswerSummary";
-import KeyPointsList from "../widgets/KeyPointsList";
-import FormulaBox from "../widgets/FormulaBox";
+import DynamicSection from "../widgets/DynamicSection";
 import SourcesWidget from "../widgets/SourcesWidget";
 import { parseAnswer } from "../../utils/answerParser";
+import RichTextRenderer from "../widgets/RichTextRenderer";
 
 interface AssistantBubbleProps {
   message: Message;
@@ -25,31 +24,28 @@ export default function AssistantBubble({ message, isStreaming = false }: Assist
 
   const citations = message.citations ?? [];
   const parsed = parseAnswer(message.content);
-  const hasWidgets = parsed && (parsed.summary || parsed.keyPoints.length > 0 || parsed.formulas.length > 0);
 
   let contentNode: ReactNode;
 
-  if (hasWidgets) {
-    // ── Structured widgets with KaTeX rendering ──
+  if (parsed.sections.length > 0) {
+    // ── Dynamic sections with KaTeX rendering ──
     contentNode = (
       <div className="space-y-3 stagger-children">
-        {parsed.summary && (
-          <AnswerSummary content={parsed.summary} citations={citations} />
-        )}
-        {parsed.keyPoints.length > 0 && (
-          <KeyPointsList points={parsed.keyPoints} citations={citations} />
-        )}
-        {parsed.formulas.length > 0 && (
-          <FormulaBox formulas={parsed.formulas} />
-        )}
+        {parsed.sections.map((section, i) => (
+          <DynamicSection
+            key={i}
+            header={section.header}
+            content={section.content}
+            citations={citations}
+            index={i}
+          />
+        ))}
       </div>
     );
   } else {
-    // ── Fallback: plain text ──
+    // ── Fallback: rich text with math rendering ──
     contentNode = (
-      <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
-        {message.content}
-      </p>
+      <RichTextRenderer text={message.content} citations={citations} />
     );
   }
 

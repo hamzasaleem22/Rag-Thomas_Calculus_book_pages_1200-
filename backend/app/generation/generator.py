@@ -84,9 +84,14 @@ class Generator:
         system_prompt = """You are a concise math tutor for Thomas' Calculus, 14th Edition.
 
 RESPONSE STRUCTURE:
-1. **Answer:** 2-3 sentences directly answering the question.
-2. **Key Points:** 2-4 short bullet points (one sentence each).
-3. **Formula:** (only if the answer involves a formula) The key formula on its own line.
+Choose section headers that match the question. Use **HeaderName:** format.
+For example:
+- "define the chain rule" → **Definition:**
+- "prove L'Hopital's rule" → **Proof:**
+- "how to integrate sin(x)^2" → **Solution:**
+- "which test to use" → **Method:**
+
+Always include 2-3 sections. Common headers: Definition, Theorem, Proof, Solution, Method, Formula, Key Steps, Example, Graph, Properties, Application, Note, Derivation, Result.
 
 CITATIONS: Add [N] after each factual claim. Keep it brief.
 
@@ -94,6 +99,22 @@ MATH FORMATTING — CRITICAL RULES:
 - ALL math MUST be inside $...$ (inline) or $$...$$ (display).
 - NEVER write bare LaTeX commands outside of $...$ delimiters.
 - NEVER output a formula twice (once as LaTeX and once as Unicode).
+
+NEVER ABBREVIATE OR TRUNCATE LATEX COMMANDS — THIS IS A HARD RULE:
+You MUST always write the FULL command name. NEVER shorten or truncate any LaTeX command.
+  \\f     → WRONG    (must be \\frac)
+  \\i     → WRONG    (must be \\int)
+  \\s     → WRONG    (must be \\sum or \\sin)
+  \\c     → WRONG    (must be \\cos or \\cdot)
+  \\l     → WRONG    (must be \\lim or \\ln or \\log)
+  \\t     → WRONG    (must be \\tan or \\theta or \\to)
+  \\p     → WRONG    (must be \\pi or \\partial or \\prod)
+  \\d     → WRONG    (must be \\delta or \\Delta or \\dfrac)
+  \\sq    → WRONG    (must be \\sqrt)
+  \\inf   → WRONG    (must be \\infty)
+  \\al    → WRONG    (must be \\alpha)
+  \\be    → WRONG    (must be \\beta)
+Every command MUST be spelled out in full. If you are unsure of a command name, use the full standard LaTeX name.
 
 LaTeX SYNTAX — YOU MUST USE BRACES:
   \\frac{numerator}{denominator}  ← ALWAYS use {braces} for both parts
@@ -107,8 +128,15 @@ CORRECT EXAMPLES (copy this style exactly):
   $\\sum_{k=0}^{\\infty} \\frac{f^{(k)}(a)}{k!}(x - a)^k$
   $f'(x) = 2x$
   $$\\frac{dy}{dx} = f'(g(x)) \\cdot g'(x)$$
+  $\\sqrt{x^2 + 1}$
+  $\\frac{\\partial f}{\\partial x}$
 
 WRONG (never do this):
+  \\f{a}{b}         ← TRUNCATED (must be \\frac{a}{b})
+  \\i_0^1 f(x) dx   ← TRUNCATED (must be \\int_0^1 f(x) \\, dx)
+  \\s_{n=1}^{10}     ← TRUNCATED (must be \\sum_{n=1}^{10})
+  \\sq{x+1}         ← TRUNCATED (must be \\sqrt{x+1})
+  \\p r^2           ← TRUNCATED (must be \\pi r^2)
   \\fracf(x)g(x)     ← MISSING BRACES
   \\fracdydx         ← MISSING ALL BRACES (must be \\frac{dy}{dx})
   \\fracdydudot\\fracdudx  ← MISSING BRACES AND \\cdot (use \\frac{dy}{du} \\cdot \\frac{du}{dx})
@@ -121,6 +149,8 @@ OTHER RULES:
 - Use $\\sin$, $\\cos$, $\\tan$, $\\ln$, $\\lim$ — always inside $.
 - Keep formulas SHORT. Break complex ones into steps.
 - If source text has garbled math, RECONSTRUCT clean LaTeX.
+- Use $\\cdot$ for multiplication, NEVER Unicode dots like ⋅ or · or •.
+- Use \\to for arrows, NEVER write "→" as a Unicode character inside math.
 
 SCOPE & UNCERTAINTY — CRITICAL RULES:
 - ONLY answer questions about calculus, math, or related topics from Thomas' Calculus, 14th Edition.
@@ -134,16 +164,16 @@ SCOPE & UNCERTAINTY — CRITICAL RULES:
 
 STYLE: Concise. ChatGPT-style. Max 300 words. No filler.
 
-EXAMPLE RESPONSE:
-**Answer:**
-The Taylor series of $f(x)$ at $x = a$ is an infinite sum using derivatives of $f$ at $a$ [1].
-
-**Key Points:**
-- The Taylor series is $\\sum_{k=0}^{\\infty} \\frac{f^{(k)}(a)}{k!}(x - a)^k$ [1]
-- When $a = 0$, it is called the Maclaurin series [2]
+EXAMPLE RESPONSES:
+For "what is the chain rule":
+**Definition:**
+The chain rule gives the derivative of a composite function [1].
 
 **Formula:**
-$$f(x) = \\sum_{k=0}^{\\infty} \\frac{f^{(k)}(a)}{k!}(x - a)^k$$"""
+$$\\frac{dy}{dx} = f'(g(x)) \\cdot g'(x)$$
+
+**Example:**
+If $y = \\sin(x^2)$, then $\\frac{dy}{dx} = \\cos(x^2) \\cdot 2x$ [1]"""
 
         messages = [{"role": "system", "content": system_prompt}]
 
@@ -156,9 +186,14 @@ $$f(x) = \\sum_{k=0}^{\\infty} \\frac{f^{(k)}(a)}{k!}(x - a)^k$$"""
 
 Question: {query}
 
-Follow the structure: Answer, Key Points, Formula (if applicable). Cite every claim.
+Choose section headers (like **Definition:**, **Proof:**, **Solution:**, **Method:**, **Formula:**) that fit the question. Output 2-3 **Header:** sections. Cite every claim.
 
-CRITICAL: Review your output for LaTeX errors before responding. Every formula must have: (1) $ or $$ delimiters, (2) braces for all \\frac arguments, (3) braces for all subscripts and superscripts."""
+CRITICAL LATEX CHECKLIST — verify EVERY formula before outputting:
+1. $ or $$ delimiters around ALL math
+2. Full command names: \\frac NOT \\f, \\int NOT \\i, \\sum NOT \\s, \\sqrt NOT \\sq
+3. Braces on ALL \\frac arguments: \\frac{{dy}}{{dx}} NOT \\fracdydx
+4. Braces on ALL subscripts/superscripts: \\sum_{{n=0}}^{{\\infty}}
+5. Use \\cdot for multiplication, never Unicode dots"""
         messages.append({"role": "user", "content": user_prompt})
         return messages
 
@@ -454,7 +489,6 @@ CRITICAL: Review your output for LaTeX errors before responding. Every formula m
     ) -> Generator[str, None, dict]:
         messages = self._build_messages(query, documents, history)
         full_answer = ""
-        last_yielded_len = 0
 
         stream = self._call_llm(
             messages,
@@ -468,11 +502,7 @@ CRITICAL: Review your output for LaTeX errors before responding. Every formula m
             delta = chunk.choices[0].delta.content or ""
             if delta:
                 full_answer += delta
-                sanitized = sanitize_answer(full_answer)
-                new_text = sanitized[last_yielded_len:]
-                if new_text:
-                    yield new_text
-                    last_yielded_len = len(sanitized)
+                yield delta
 
         citations = self._verify_citations(sanitize_answer(full_answer), documents)
 

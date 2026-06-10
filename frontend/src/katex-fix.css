@@ -1,0 +1,54 @@
+/**
+ * KaTeX fraction bar fix — loaded AFTER Tailwind + KaTeX CSS.
+ *
+ * Tailwind v4 preflight sets `border: 0 solid` on *, which strips
+ * KaTeX's fraction line (the horizontal bar in fractions like dy/dx).
+ * KaTeX's CSS sets border-bottom-style: solid but never sets
+ * border-bottom-width, relying on browser defaults that Tailwind resets.
+ *
+ * This file uses background-color as a nuclear fallback that no CSS
+ * reset can ever strip, guaranteeing the fraction line is always visible.
+ */
+
+/* ── Fraction bars ─────────────────────────────── */
+.katex .mfrac .frac-line {
+  border-bottom-style: solid !important;
+  border-bottom-width: 0.04em !important;
+  border-bottom-color: currentColor !important;
+  min-height: 1px !important;
+  background-color: currentColor !important;
+  height: 1px !important;
+}
+
+/* ── Overlines, underlines, horizontal rules ──── */
+.katex .hline,
+.katex .overline .overline-line,
+.katex .underline .underline-line,
+.katex .rule {
+  border-bottom-style: solid !important;
+  border-bottom-width: 0.04em !important;
+  border-bottom-color: currentColor !important;
+  min-height: 1px !important;
+  background-color: currentColor !important;
+  height: 1px !important;
+}
+
+/* ── Dashed lines (aligned equations) ─────────── */
+.katex .hdashline {
+  border-bottom-style: dashed !important;
+  border-bottom-width: 0.04em !important;
+  border-bottom-color: currentColor !important;
+  min-height: 1px !important;
+}
+
+/* ── Strikethrough (cancel notation) ───────────── */
+.katex .sout {
+  border-bottom-style: solid !important;
+  border-bottom-width: 0.08em !important;
+  border-bottom-color: currentColor !important;
+}
+
+/* ── Ensure vlist table doesn't collapse borders ─ */
+.katex .vlist-t {
+  border-collapse: separate !important;
+}
